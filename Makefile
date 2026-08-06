@@ -3,7 +3,7 @@ export
 
 .PHONY: init up down logs psql migrate-up migrate-down migrate-create migrate-force seed reset fix-perms
 
-COMPOSE_FILE   := cube_mcp/docker-compose.yml
+COMPOSE_FILE   := docker-compose.yml
 # The compose file lives in cube_mcp/, so compose would otherwise pick up
 # cube_mcp/.env (Cube's own config) for substitution instead of ours.
 COMPOSE        := docker compose $(if $(wildcard .env),--env-file .env,) -f $(COMPOSE_FILE)
