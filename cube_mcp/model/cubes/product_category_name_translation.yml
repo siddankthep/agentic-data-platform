@@ -1,0 +1,24 @@
+cubes:
+  - name: product_category_name_translation
+    sql_table: public.product_category_name_translation
+    data_source: default
+
+    joins: []
+
+    dimensions:
+      - name: product_category_name
+        sql: product_category_name
+        type: string
+
+      - name: product_category_name_english
+        sql: product_category_name_english
+        type: string
+
+    measures:
+      - name: count
+        type: count
+
+    pre_aggregations:
+      # Pre-aggregation definitions go here.
+      # Learn more in the documentation: https://cube.dev/docs/caching/pre-aggregations/getting-started
+

@@ -1,0 +1,76 @@
+cubes:
+  - name: products
+    sql_table: public.products
+    data_source: default
+
+    joins: []
+
+    dimensions:
+      - name: product_category_name
+        sql: product_category_name
+        type: string
+
+      - name: product_id
+        sql: product_id
+        type: string
+        primary_key: true
+
+    measures:
+      - name: count
+        type: count
+
+      # Weight
+      - name: avg_product_weight
+        sql: product_weight_g
+        type: avg
+
+      - name: min_product_weight
+        sql: product_weight_g
+        type: min
+
+      - name: max_product_weight
+        sql: product_weight_g
+        type: max
+
+      # Length
+      - name: avg_product_length
+        sql: product_length_cm
+        type: avg
+
+      - name: min_product_length
+        sql: product_length_cm
+        type: min
+
+      - name: max_product_length
+        sql: product_length_cm
+        type: max
+
+      # Height
+      - name: avg_product_height
+        sql: product_height_cm
+        type: avg
+
+      - name: min_product_height
+        sql: product_height_cm
+        type: min
+
+      - name: max_product_height
+        sql: product_height_cm
+        type: max
+
+      # Width
+      - name: avg_product_width
+        sql: product_width_cm
+        type: avg
+
+      - name: min_product_width
+        sql: product_width_cm
+        type: min
+
+      - name: max_product_width
+        sql: product_width_cm
+        type: max
+
+    pre_aggregations:
+      # Pre-aggregation definitions go here.
+      # Learn more in the documentation: https://cube.dev/docs/caching/pre-aggregations/getting-started

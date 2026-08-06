@@ -1,0 +1,40 @@
+cubes:
+  - name: order_payments
+    sql_table: public.order_payments
+    data_source: default
+
+    joins:
+      - name: orders
+        sql: "{CUBE.order_id} = {orders.order_id}"
+        relationship: many_to_one
+
+    dimensions:
+      - name: order_id
+        sql: order_id
+        type: string
+        primary_key: true
+
+      - name: payment_sequential
+        sql: payment_sequential
+        type: number
+        primary_key: true
+
+      - name: payment_type
+        sql: payment_type
+        type: string
+
+    measures:
+      - name: count
+        type: count
+
+      - name: total_payment_value
+        type: sum
+        sql: payment_value
+
+      - name: avg_payment_value
+        type: avg
+        sql: payment_value
+
+    pre_aggregations:
+      # Pre-aggregation definitions go here.
+      # Learn more in the documentation: https://cube.dev/docs/caching/pre-aggregations/getting-started

@@ -1,0 +1,9 @@
+DROP TABLE IF EXISTS order_reviews;
+DROP TABLE IF EXISTS order_payments;
+DROP TABLE IF EXISTS order_items;
+DROP TABLE IF EXISTS orders;
+DROP TABLE IF EXISTS products;
+DROP TABLE IF EXISTS product_category_name_translation;
+DROP TABLE IF EXISTS geolocation;
+DROP TABLE IF EXISTS sellers;
+DROP TABLE IF EXISTS customers;

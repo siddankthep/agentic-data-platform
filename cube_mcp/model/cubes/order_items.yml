@@ -1,0 +1,66 @@
+cubes:
+  - name: order_items
+    sql_table: public.order_items
+    data_source: default
+
+    joins:
+      - name: orders
+        sql: "{CUBE.order_id} = {orders.order_id}"
+        relationship: many_to_one
+
+      - name: products
+        sql: "{CUBE.product_id} = {products.product_id}"
+        relationship: many_to_one
+
+      - name: sellers
+        sql: "{CUBE.seller_id} = {sellers.seller_id}"
+        relationship: many_to_one
+
+    dimensions:
+      - name: order_id
+        sql: order_id
+        type: string
+        primary_key: true
+        public: true
+
+      - name: order_item_id
+        sql: order_item_id
+        type: number
+        primary_key: true
+        public: true
+
+      - name: product_id
+        sql: product_id
+        type: string
+
+      - name: seller_id
+        sql: seller_id
+        type: string
+
+      - name: shipping_limit_date
+        sql: shipping_limit_date
+        type: time
+
+    measures:
+      - name: count
+        type: count
+
+      - name: total_price
+        type: sum
+        sql: price
+
+      - name: avg_price
+        type: avg
+        sql: price
+
+      - name: total_freight_value
+        type: sum
+        sql: freight_value
+
+      - name: avg_freight_value
+        type: avg
+        sql: freight_value
+
+    pre_aggregations:
+      # Pre-aggregation definitions go here.
+      # Learn more in the documentation: https://cube.dev/docs/caching/pre-aggregations/getting-started

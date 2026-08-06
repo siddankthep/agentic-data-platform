@@ -1,0 +1,47 @@
+services:
+  cube:
+    image: cubejs/cube:latest
+    # Cube writes generated models and Cube Store state into the bind mount
+    # below. Without this it runs as root and those files land on the host as
+    # root:root, uneditable by the developer. Makefile exports the host's ids.
+    user: ${DOCKER_UID:-1000}:${DOCKER_GID:-1000}
+    ports:
+      - 4000:4000
+      - 15432:15432
+    environment:
+      - CUBEJS_DEV_MODE=true
+      - CUBEJS_SCHEMA_PATH=model
+      - CUBEJS_DB_TYPE=postgres
+      - CUBEJS_DB_HOST=postgres
+      - CUBEJS_DB_PORT=5432
+      - CUBEJS_DB_NAME=${POSTGRES_DB:-olist}
+      - CUBEJS_DB_USER=${POSTGRES_USER:-cube}
+      - CUBEJS_DB_PASS=${POSTGRES_PASSWORD:-cube}
+    volumes:
+      - ./cube_mcp:/cube/conf
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-cube}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cube}
+      POSTGRES_DB: ${POSTGRES_DB:-olist}
+    ports:
+      - ${POSTGRES_PORT:-5435}:5432
+    volumes:
+      - pgdata:/var/lib/postgresql
+      # Read by the server-side COPY statements in db/seed.sql (`make seed`).
+      - ../db:/db:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${POSTGRES_USER:-cube} -d ${POSTGRES_DB:-olist}
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  pgdata:
