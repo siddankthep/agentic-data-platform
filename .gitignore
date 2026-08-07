@@ -2,4 +2,4 @@
 
 # Cube Store local state (RocksDB metastore, lock files) — regenerated on boot,
 # and previously written into the bind mount as root.
-cube_mcp/.cubestore/
+cube_semantics/.cubestore/
