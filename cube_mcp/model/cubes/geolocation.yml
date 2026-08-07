@@ -7,11 +7,11 @@ cubes:
 
     dimensions:
       - name: geolocation_city
-        sql: geolocation_city
+        sql: "{CUBE}.geolocation_city"
         type: string
 
       - name: geolocation_state
-        sql: geolocation_state
+        sql: "{CUBE}.geolocation_state"
         type: string
 
     measures:

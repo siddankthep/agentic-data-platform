@@ -10,36 +10,36 @@ cubes:
 
     dimensions:
       - name: order_id
-        sql: order_id
+        sql: "{CUBE}.order_id"
         type: string
         primary_key: true
 
       - name: customer_id
-        sql: customer_id
+        sql: "{CUBE}.customer_id"
         type: string
 
       - name: order_status
-        sql: order_status
+        sql: "{CUBE}.order_status"
         type: string
 
       - name: order_approved_at
-        sql: order_approved_at
+        sql: "{CUBE}.order_approved_at"
         type: time
 
       - name: order_delivered_carrier_date
-        sql: order_delivered_carrier_date
+        sql: "{CUBE}.order_delivered_carrier_date"
         type: time
 
       - name: order_delivered_customer_date
-        sql: order_delivered_customer_date
+        sql: "{CUBE}.order_delivered_customer_date"
         type: time
 
       - name: order_estimated_delivery_date
-        sql: order_estimated_delivery_date
+        sql: "{CUBE}.order_estimated_delivery_date"
         type: time
 
       - name: order_purchase_timestamp
-        sql: order_purchase_timestamp
+        sql: "{CUBE}.order_purchase_timestamp"
         type: time
 
     measures:
@@ -48,11 +48,11 @@ cubes:
 
       - name: latest_order_date
         type: max
-        sql: order_purchase_timestamp
+        sql: "{CUBE}.order_purchase_timestamp"
 
       - name: oldest_order_date
         type: min
-        sql: order_purchase_timestamp
+        sql: "{CUBE}.order_purchase_timestamp"
 
     pre_aggregations:
       # Pre-aggregation definitions go here.

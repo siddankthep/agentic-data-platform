@@ -10,20 +10,20 @@ cubes:
 
     dimensions:
       - name: review_id
-        sql: review_id
+        sql: "{CUBE}.review_id"
         type: string
         primary_key: true
 
       - name: order_id
-        sql: order_id
+        sql: "{CUBE}.order_id"
         type: string
 
       - name: review_answer_timestamp
-        sql: review_answer_timestamp
+        sql: "{CUBE}.review_answer_timestamp"
         type: time
 
       - name: review_creation_date
-        sql: review_creation_date
+        sql: "{CUBE}.review_creation_date"
         type: time
 
     measures:
@@ -32,7 +32,7 @@ cubes:
 
       - name: avg_review_score
         type: avg
-        sql: review_score
+        sql: "{CUBE}.review_score"
 
     pre_aggregations:
       # Pre-aggregation definitions go here.

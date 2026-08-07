@@ -34,7 +34,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql
       # Read by the server-side COPY statements in db/seed.sql (`make seed`).
-      - ../db:/db:ro
+      - ./db:/db:ro
     healthcheck:
       test:
         - CMD-SHELL

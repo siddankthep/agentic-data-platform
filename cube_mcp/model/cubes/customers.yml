@@ -7,16 +7,16 @@ cubes:
 
     dimensions:
       - name: customer_id
-        sql: customer_id
+        sql: "{CUBE}.customer_id"
         type: string
         primary_key: true
 
       - name: customer_city
-        sql: customer_city
+        sql: "{CUBE}.customer_city"
         type: string
 
       - name: customer_state
-        sql: customer_state
+        sql: "{CUBE}.customer_state"
         type: string
 
     measures:

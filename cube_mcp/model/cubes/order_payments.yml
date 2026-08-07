@@ -10,17 +10,17 @@ cubes:
 
     dimensions:
       - name: order_id
-        sql: order_id
+        sql: "{CUBE}.order_id"
         type: string
         primary_key: true
 
       - name: payment_sequential
-        sql: payment_sequential
+        sql: "{CUBE}.payment_sequential"
         type: number
         primary_key: true
 
       - name: payment_type
-        sql: payment_type
+        sql: "{CUBE}.payment_type"
         type: string
 
     measures:
@@ -29,11 +29,11 @@ cubes:
 
       - name: total_payment_value
         type: sum
-        sql: payment_value
+        sql: "{CUBE}.payment_value"
 
       - name: avg_payment_value
         type: avg
-        sql: payment_value
+        sql: "{CUBE}.payment_value"
 
     pre_aggregations:
       # Pre-aggregation definitions go here.

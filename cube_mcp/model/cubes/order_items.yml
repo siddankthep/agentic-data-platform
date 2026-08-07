@@ -18,27 +18,27 @@ cubes:
 
     dimensions:
       - name: order_id
-        sql: order_id
+        sql: "{CUBE}.order_id"
         type: string
         primary_key: true
         public: true
 
       - name: order_item_id
-        sql: order_item_id
+        sql: "{CUBE}.order_item_id"
         type: number
         primary_key: true
         public: true
 
       - name: product_id
-        sql: product_id
+        sql: "{CUBE}.product_id"
         type: string
 
       - name: seller_id
-        sql: seller_id
+        sql: "{CUBE}.seller_id"
         type: string
 
       - name: shipping_limit_date
-        sql: shipping_limit_date
+        sql: "{CUBE}.shipping_limit_date"
         type: time
 
     measures:
@@ -47,19 +47,19 @@ cubes:
 
       - name: total_price
         type: sum
-        sql: price
+        sql: "{CUBE}.price"
 
       - name: avg_price
         type: avg
-        sql: price
+        sql: "{CUBE}.price"
 
       - name: total_freight_value
         type: sum
-        sql: freight_value
+        sql: "{CUBE}.freight_value"
 
       - name: avg_freight_value
         type: avg
-        sql: freight_value
+        sql: "{CUBE}.freight_value"
 
     pre_aggregations:
       # Pre-aggregation definitions go here.
