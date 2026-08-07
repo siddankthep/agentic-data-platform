@@ -1,22 +1,26 @@
 cubes:
   - name: order_reviews
-    sql_table: public.order_reviews
     data_source: default
-
-    joins:
-      - name: orders
-        sql: "{CUBE.order_id} = {orders.order_id}"
-        relationship: many_to_one
+    sql: >
+      SELECT DISTINCT ON (order_id)
+        order_id,
+        review_id,
+        review_score,
+        review_comment_title,
+        review_creation_date,
+        review_answer_timestamp
+      FROM public.order_reviews
+      ORDER BY order_id, review_answer_timestamp DESC
 
     dimensions:
-      - name: review_id
-        sql: "{CUBE}.review_id"
-        type: string
-        primary_key: true
-
       - name: order_id
         sql: "{CUBE}.order_id"
         type: string
+        primary_key: true
+
+      - name: review_score
+        sql: "{CUBE}.review_score"
+        type: number
 
       - name: review_answer_timestamp
         sql: "{CUBE}.review_answer_timestamp"
@@ -27,7 +31,7 @@ cubes:
         type: time
 
     measures:
-      - name: count
+      - name: num_reviews
         type: count
 
       - name: avg_review_score

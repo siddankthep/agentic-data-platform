@@ -8,6 +8,18 @@ cubes:
         sql: "{CUBE.customer_id} = {customers.customer_id}"
         relationship: many_to_one
 
+      - name: order_items
+        sql: "{CUBE.order_id} = {order_items.order_id}"
+        relationship: one_to_many
+
+      - name: order_payments
+        sql: "{CUBE.order_id} = {order_payments.order_id}"
+        relationship: one_to_many
+
+      - name: order_reviews
+        sql: "{CUBE.order_id} = {order_reviews.order_id}"
+        relationship: one_to_many
+
     dimensions:
       - name: order_id
         sql: "{CUBE}.order_id"

@@ -41,6 +41,14 @@ cubes:
         sql: "{CUBE}.shipping_limit_date"
         type: time
 
+      - name: price
+        sql: "{CUBE}.price"
+        type: time
+
+      - name: freight_value
+        sql: "{CUBE}.freight_value"
+        type: time
+
     measures:
       - name: count
         type: count

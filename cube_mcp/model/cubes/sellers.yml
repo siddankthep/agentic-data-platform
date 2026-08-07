@@ -19,6 +19,10 @@ cubes:
         sql: "{CUBE}.seller_state"
         type: string
 
+      - name: seller_zip_code_prefix
+        sql: "{CUBE}.seller_zip_code_prefix"
+        type: string
+
     measures:
       - name: count
         type: count

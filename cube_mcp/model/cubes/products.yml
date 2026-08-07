@@ -6,14 +6,22 @@ cubes:
     joins: []
 
     dimensions:
-      - name: product_category_name
-        sql: "{CUBE}.product_category_name"
-        type: string
-
       - name: product_id
         sql: "{CUBE}.product_id"
         type: string
         primary_key: true
+
+      - name: product_category_name
+        sql: "{CUBE}.product_category_name"
+        type: string
+
+      - name: product_photos_qty
+        sql: "{CUBE}.product_photos_qty"
+        type: string
+
+      - name: product_weight_g
+        sql: "{CUBE}.product_weight_g"
+        type: string
 
     measures:
       - name: count

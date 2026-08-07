@@ -1,0 +1,23 @@
+views:
+  - name: order_economics
+    description: >
+      Order-grain economics. Item revenue and payment value are aggregated
+      independently and joined on order dimensions — safe to combine.
+
+    cubes:
+      - join_path: orders
+        includes:
+          - order_purchase_timestamp
+          - order_status
+          - count
+
+      - join_path: orders.order_items
+        prefix: true
+        includes:
+          - total_price
+          - total_freight_value
+
+      - join_path: orders.order_payments
+        prefix: true
+        includes:
+          - total_payment_value

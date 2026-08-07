@@ -14,6 +14,13 @@ cubes:
         sql: "{CUBE}.geolocation_state"
         type: string
 
+      - name: location
+        type: geo
+        latitude:
+          sql: "{CUBE}.geolocation_lat"
+        longitude:
+          sql: "{CUBE}.geolocation_lng"
+
     measures:
       - name: count
         type: count
@@ -21,4 +28,3 @@ cubes:
     pre_aggregations:
       # Pre-aggregation definitions go here.
       # Learn more in the documentation: https://cube.dev/docs/caching/pre-aggregations/getting-started
-

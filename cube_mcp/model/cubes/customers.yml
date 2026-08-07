@@ -11,12 +11,20 @@ cubes:
         type: string
         primary_key: true
 
+      - name: customer_unique_id
+        sql: "{CUBE}.customer_unique_id"
+        type: string
+
       - name: customer_city
         sql: "{CUBE}.customer_city"
         type: string
 
       - name: customer_state
         sql: "{CUBE}.customer_state"
+        type: string
+
+      - name: customer_zip_code_prefix
+        sql: "{CUBE}.customer_zip_code_prefix"
         type: string
 
     measures:

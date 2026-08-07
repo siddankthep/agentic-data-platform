@@ -23,8 +23,16 @@ cubes:
         sql: "{CUBE}.payment_type"
         type: string
 
+      - name: payment_installments
+        sql: "{CUBE}.payment_installments"
+        type: string
+
+      - name: payment_value
+        sql: "{CUBE}.payment_value"
+        type: string
+
     measures:
-      - name: count
+      - name: num_payments
         type: count
 
       - name: total_payment_value
