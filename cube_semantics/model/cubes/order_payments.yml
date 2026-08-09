@@ -90,8 +90,8 @@ cubes:
           `order_items.total_price` for the merchandise-only view.
 
       - name: avg_payment_value
-        type: avg
-        sql: "{CUBE}.payment_value"
+        type: number
+        sql: "{CUBE.total_payment_value} / NULLIF({CUBE.num_payments}, 0)"
         title: Avg Payment Amount
         description: >
           Mean value per payment RECORD, not per order. For average order value,
@@ -106,9 +106,14 @@ cubes:
           Total paid divided by distinct orders — the correct AOV, unaffected by
           orders being split across several payment records.
 
-      - name: avg_installments
-        type: avg
+      - name: installments_sum
+        type: sum
         sql: "{CUBE}.payment_installments"
+        public: false
+
+      - name: avg_installments
+        type: number
+        sql: "{CUBE.installments_sum} / NULLIF({CUBE.num_payments}, 0)"
         title: Avg Instalments
         description: >
           Mean instalment count across payment records. Filter to
@@ -130,5 +135,20 @@ cubes:
         description: Payment records with more than one instalment.
 
     pre_aggregations:
-      # Pre-aggregation definitions go here.
-      # Learn more in the documentation: https://cube.dev/docs/caching/pre-aggregations/getting-started
+      # Payment-method mix over time. Five payment types and a boolean, so this
+      # is one of the cheapest rollups in the model and covers the whole
+      # "how do Brazilians pay, and is that changing?" question set.
+      - name: payments_by_day_type
+        measures:
+          - num_payments
+          - total_payment_value
+          - installments_sum
+          - installment_payments
+        dimensions:
+          - payment_type
+          - is_installment_purchase
+        time_dimension: orders.order_purchase_timestamp
+        granularity: day
+        partition_granularity: month
+        refresh_key:
+          every: 1 hour

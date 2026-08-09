@@ -140,10 +140,13 @@ cubes:
           what the customer paid — see `order_payments.total_payment_value`.
 
       - name: avg_price
-        type: avg
-        sql: "{CUBE}.price"
+        type: number
+        sql: "{CUBE.total_price} / NULLIF({CUBE.count}, 0)"
         title: Avg Item Price
-        description: Mean price per item line — the average selling price, not average order value.
+        description: >
+          Mean price per item line — the average selling price, not average
+          order value. Expressed as sum ÷ count so pre-aggregations can serve
+          it; an average of averages would be wrong.
 
       - name: total_freight_value
         type: sum
@@ -152,8 +155,8 @@ cubes:
         description: Sum of allocated shipping costs in BRL.
 
       - name: avg_freight_value
-        type: avg
-        sql: "{CUBE}.freight_value"
+        type: number
+        sql: "{CUBE.total_freight_value} / NULLIF({CUBE.count}, 0)"
         title: Avg Item Freight
         description: Mean shipping cost per item line.
 
@@ -192,5 +195,48 @@ cubes:
           also includes carrier delay.
 
     pre_aggregations:
-      # Pre-aggregation definitions go here.
-      # Learn more in the documentation: https://cube.dev/docs/caching/pre-aggregations/getting-started
+      # All measures here are sums and counts, so every rollup below is fully
+      # additive and re-usable across granularities. The count_distinct measures
+      # (distinct_products, distinct_sellers, distinct_orders_with_items) are
+      # deliberately excluded — including one would make the whole rollup
+      # non-additive and it could then only answer queries at exactly its own
+      # granularity.
+      #
+      # The time dimension comes from the joined orders cube. Items have no
+      # meaningful date of their own, and every trend question is asked in terms
+      # of when the order was placed.
+
+      # Category and geography — the assortment view. Low cardinality
+      # (~70 categories × 27 states), so this stays small even at day grain.
+      - name: items_by_day_category_state
+        measures:
+          - count
+          - total_price
+          - total_freight_value
+          - late_shipped_items
+        dimensions:
+          - products.category_english
+          - sellers.seller_state
+        time_dimension: orders.order_purchase_timestamp
+        granularity: day
+        partition_granularity: month
+        refresh_key:
+          every: 1 hour
+
+      # Per-seller scorecard. ~3k sellers makes this the highest-cardinality
+      # rollup in the model, so it is built at MONTH grain on purpose — at day
+      # grain it would approach the size of the source table and stop being a
+      # saving. Seller ranking is a monthly question anyway.
+      - name: items_by_month_seller
+        measures:
+          - count
+          - total_price
+          - total_freight_value
+          - late_shipped_items
+        dimensions:
+          - sellers.seller_id
+          - sellers.seller_state
+        time_dimension: orders.order_purchase_timestamp
+        granularity: month
+        refresh_key:
+          every: 1 hour

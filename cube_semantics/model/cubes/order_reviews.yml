@@ -103,64 +103,86 @@ cubes:
         title: Reviewed Orders
         description: Distinct orders carrying a review. Fan-out safe.
 
-      - name: avg_review_score
-        type: avg
+      # -- Additive building blocks --------------------------------------
+      # Private helpers that keep the averages and rates below additive, so
+      # pre-aggregations can store them per day and still answer monthly
+      # questions. See the pre_aggregations block.
+      - name: review_score_sum
+        type: sum
         sql: "{CUBE}.review_score"
+        public: false
+
+      - name: scored_reviews
+        type: count
+        public: false
+        filters:
+          - sql: "{CUBE}.review_score IS NOT NULL"
+
+      - name: response_days_sum
+        type: sum
+        sql: "{CUBE.review_response_days}"
+        public: false
+
+      - name: avg_review_score
+        type: number
+        sql: "{CUBE.review_score_sum} / NULLIF({CUBE.scored_reviews}, 0)"
         title: Avg Review Score
         description: >
-          Mean star rating, 1–5. The headline satisfaction metric.
+          Mean star rating, 1–5. The headline satisfaction metric. Expressed as
+          sum ÷ count rather than a plain AVG so pre-aggregations can serve it
+          at any granularity.
 
           Caution: alongside item-level members this becomes an item-weighted
           average — a five-item order contributes its score five times. For a
           strict per-order figure, query it without item members.
 
       - name: promoters
-        type: count_distinct
-        sql: "{CUBE}.order_id"
+        type: count
         filters:
           - sql: "{CUBE}.review_score >= 4"
         title: Positive Reviews
-        description: Distinct orders rated 4 or 5.
+        description: >
+          Reviews rated 4 or 5. One row per order at review grain, so this
+          equals an order count unless the query also carries item-level
+          members, in which case it is item-weighted like the rest of this cube.
 
       - name: detractors
-        type: count_distinct
-        sql: "{CUBE}.order_id"
+        type: count
         filters:
           - sql: "{CUBE}.review_score <= 2"
         title: Negative Reviews
-        description: Distinct orders rated 1 or 2.
+        description: Reviews rated 1 or 2. Same weighting note as `promoters`.
 
       - name: one_star_reviews
-        type: count_distinct
-        sql: "{CUBE}.order_id"
+        type: count
         filters:
           - sql: "{CUBE}.review_score = 1"
         title: One-Star Reviews
         description: >
-          Distinct orders rated 1 — the sharpest dissatisfaction signal, and the
-          one that correlates most strongly with late delivery.
+          Reviews rated 1 — the sharpest dissatisfaction signal, and the one
+          that correlates most strongly with late delivery.
 
       - name: positive_review_rate
         type: number
-        sql: "1.0 * {CUBE.promoters} / NULLIF({CUBE.reviewed_orders}, 0)"
+        sql: "1.0 * {CUBE.promoters} / NULLIF({CUBE.scored_reviews}, 0)"
         format: percent
         title: Positive Review Rate
-        description: Share of reviewed orders rated 4 or 5. Ranges 0–1.
+        description: Share of scored reviews rated 4 or 5. Ranges 0–1.
 
       - name: negative_review_rate
         type: number
-        sql: "1.0 * {CUBE.detractors} / NULLIF({CUBE.reviewed_orders}, 0)"
+        sql: "1.0 * {CUBE.detractors} / NULLIF({CUBE.scored_reviews}, 0)"
         format: percent
         title: Negative Review Rate
         description: >
-          Share of reviewed orders rated 1 or 2. The primary quality-alarm
+          Share of scored reviews rated 1 or 2. The primary quality-alarm
           metric — segment it by seller or category to find problem areas.
 
       - name: nps_like_score
         type: number
         sql: >
           100.0 * ({CUBE.promoters} - {CUBE.detractors})
-            / NULLIF({CUBE.reviewed_orders}, 0)
+            / NULLIF({CUBE.scored_reviews}, 0)
         title: NPS-Like Score
         description: >
           Positive-review share minus negative-review share, scaled to −100…100.
@@ -168,11 +190,52 @@ cubes:
           from an 0–10 recommendation question. Label it as such in any output.
 
       - name: avg_review_response_days
-        type: avg
-        sql: "{CUBE.review_response_days}"
+        type: number
+        sql: "{CUBE.response_days_sum} / NULLIF({CUBE.num_reviews}, 0)"
         title: Avg Response Days
         description: Mean days customers take to answer the satisfaction survey.
 
     pre_aggregations:
-      # Pre-aggregation definitions go here.
-      # Learn more in the documentation: https://cube.dev/docs/caching/pre-aggregations/getting-started
+      # Note the refresh_key here: this cube's `sql` is a DISTINCT ON query, so
+      # Cube cannot infer a cheap freshness check for it. An explicit key on
+      # MAX(review_answer_timestamp) means the rollup is only rebuilt when a
+      # genuinely newer review lands, rather than on a blind timer.
+
+      # Satisfaction by score and sentiment over time. Tiny — five score values
+      # by three sentiment buckets — and it answers most review questions.
+      - name: reviews_by_day_score
+        measures:
+          - num_reviews
+          - scored_reviews
+          - review_score_sum
+          - response_days_sum
+          - promoters
+          - detractors
+          - one_star_reviews
+        dimensions:
+          - review_score
+          - review_sentiment
+        time_dimension: review_answer_timestamp
+        granularity: day
+        partition_granularity: month
+        refresh_key:
+          sql: "SELECT MAX(review_answer_timestamp) FROM public.order_reviews"
+
+      # Satisfaction joined to delivery outcome — the rollup behind "do late
+      # deliveries get worse reviews?". Grouping by orders.is_late and
+      # order_status keeps it two-dimensional and small.
+      - name: reviews_by_month_delivery_outcome
+        measures:
+          - num_reviews
+          - scored_reviews
+          - review_score_sum
+          - promoters
+          - detractors
+          - one_star_reviews
+        dimensions:
+          - orders.is_late
+          - orders.order_status
+        time_dimension: orders.order_purchase_timestamp
+        granularity: month
+        refresh_key:
+          sql: "SELECT MAX(review_answer_timestamp) FROM public.order_reviews"
