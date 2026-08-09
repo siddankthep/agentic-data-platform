@@ -3,3 +3,7 @@
 # Cube Store local state (RocksDB metastore, lock files) — regenerated on boot,
 # and previously written into the bind mount as root.
 cube_semantics/.cubestore/
+
+# Python bytecode caches
+__pycache__/
+*.py[cod]

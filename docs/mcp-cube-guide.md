@@ -144,26 +144,33 @@ Design notes worth internalising:
 uv add httpx
 ```
 
-Create `cube_mcp_server/server.py`. The whole server is ~120 lines.
+Create `cube_mcp_server/server.py`. The whole server is ~120 lines. The working
+implementation lives at [server.py](../cube_mcp_server/server.py) — read this
+section first, then compare.
 
 ### 4.1 Skeleton
 
 ```python
 import os
 import httpx
-from mcp.server.fastmcp import FastMCP
+from mcp.server import MCPServer
 
 CUBE_URL = os.getenv("CUBE_API_URL", "http://localhost:4000/cubejs-api/v1")
 CUBE_TOKEN = os.getenv("CUBE_API_TOKEN")  # unused in dev mode
 
-mcp = FastMCP("cube-semantics")
+mcp = MCPServer("cube-semantics")
 
 def _client() -> httpx.Client:
     headers = {"Authorization": CUBE_TOKEN} if CUBE_TOKEN else {}
     return httpx.Client(base_url=CUBE_URL, headers=headers, timeout=60)
 ```
 
-`FastMCP` turns a decorated Python function into an MCP tool: the **function
+**Version note:** this project pins `mcp>=2.0.0`, where the server class is
+`mcp.server.MCPServer`. Most tutorials you'll find online show
+`from mcp.server.fastmcp import FastMCP`, which is the 1.x name for the same
+thing — the decorator API is identical, only the import moved.
+
+`MCPServer` turns a decorated Python function into an MCP tool: the **function
 name** becomes the tool name, the **docstring** becomes the description, and
 **type hints** become the JSON Schema. That's why the type hints below are not
 cosmetic — they're the contract the model sees.
@@ -289,6 +296,18 @@ loop:
 ```bash
 uv run mcp dev cube_mcp_server/server.py
 ```
+
+Or drive the functions directly, which needs nothing but Python and a running
+Cube — the fastest inner loop while you're still shaping the tools:
+
+```bash
+uv run python -c "
+from cube_mcp_server.server import describe_semantics, run_query
+print(describe_semantics.fn(view='order_economics'))
+"
+```
+
+(`.fn` reaches past the decorator to the plain function.)
 
 Then register with Claude Code:
 
