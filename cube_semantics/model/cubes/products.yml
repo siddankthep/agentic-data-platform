@@ -2,82 +2,206 @@ cubes:
   - name: products
     sql_table: public.products
     data_source: default
+    title: Products
+    description: >
+      The product catalogue — one row per product, with its category and
+      physical dimensions. A dimension table with no sales figures: pair it with
+      `order_items` measures for revenue and volume by product or category.
 
-    joins: []
+      Language note: the raw `product_category_name` is Portuguese. Use
+      `category_english` for anything user-facing; it is resolved through the
+      `product_category_name_translation` cube.
+
+      Physical dimensions matter commercially here — weight and volume drive
+      freight cost, which is why the size measures are worth having alongside
+      `order_items.freight_ratio`.
+
+    joins:
+      - name: product_category_name_translation
+        sql: >
+          {CUBE.product_category_name}
+            = {product_category_name_translation.product_category_name}
+        relationship: many_to_one
 
     dimensions:
       - name: product_id
         sql: "{CUBE}.product_id"
         type: string
         primary_key: true
+        title: Product ID
+        description: Unique identifier of the product. Opaque hash — there is no product name in this dataset.
 
       - name: product_category_name
         sql: "{CUBE}.product_category_name"
         type: string
+        title: Category (Portuguese)
+        description: >
+          Raw category label in Brazilian Portuguese, e.g. `cama_mesa_banho`.
+          Null for a small number of products. Prefer `category_english` in
+          output; keep this one for joining back to source systems.
+
+      - name: category_english
+        sql: "{product_category_name_translation.product_category_name_english}"
+        type: string
+        title: Category
+        description: >
+          English category name, e.g. `bed_bath_table`. The default dimension
+          for any category breakdown. Null when the product has no category or
+          the translation is missing.
 
       - name: product_photos_qty
         sql: "{CUBE}.product_photos_qty"
-        type: string
+        type: number
+        title: Photo Count
+        description: >
+          Number of listing photos — a rough proxy for listing quality. Worth
+          correlating against review scores and conversion.
 
       - name: product_weight_g
         sql: "{CUBE}.product_weight_g"
+        type: number
+        title: Weight (g)
+        description: Product weight in grams. A primary driver of freight cost.
+
+      - name: product_length_cm
+        sql: "{CUBE}.product_length_cm"
+        type: number
+        title: Length (cm)
+        description: Package length in centimetres.
+
+      - name: product_height_cm
+        sql: "{CUBE}.product_height_cm"
+        type: number
+        title: Height (cm)
+        description: Package height in centimetres.
+
+      - name: product_width_cm
+        sql: "{CUBE}.product_width_cm"
+        type: number
+        title: Width (cm)
+        description: Package width in centimetres.
+
+      - name: product_volume_cm3
+        sql: >
+          {CUBE}.product_length_cm * {CUBE}.product_height_cm
+            * {CUBE}.product_width_cm
+        type: number
+        title: Volume (cm³)
+        description: >
+          Bounding-box volume, computed from the three package dimensions. Use
+          this rather than reasoning over length, height and width separately —
+          carriers price on volumetric weight.
+
+      - name: size_class
+        sql: >
+          CASE
+            WHEN {CUBE}.product_weight_g IS NULL THEN 'unknown'
+            WHEN {CUBE}.product_weight_g < 500 THEN 'light'
+            WHEN {CUBE}.product_weight_g < 5000 THEN 'medium'
+            ELSE 'heavy'
+          END
         type: string
+        title: Size Class
+        description: >
+          Weight bucketed into light (<0.5 kg), medium (0.5–5 kg) and heavy
+          (≥5 kg). A shared definition so shipping-cost analyses don't each pick
+          their own thresholds.
 
     measures:
       - name: count
         type: count
+        title: Products
+        description: >
+          Number of products in the catalogue. Counts listings, not sales — for
+          products actually sold use `order_items.distinct_products`.
 
-      # Weight
+      # -- Weight ----------------------------------------------------------
       - name: avg_product_weight
         sql: "{CUBE}.product_weight_g"
         type: avg
+        title: Avg Weight (g)
+        description: Mean product weight in grams across the catalogue slice.
 
       - name: min_product_weight
         sql: "{CUBE}.product_weight_g"
         type: min
+        title: Min Weight (g)
+        description: Lightest product in the slice.
 
       - name: max_product_weight
         sql: "{CUBE}.product_weight_g"
         type: max
+        title: Max Weight (g)
+        description: Heaviest product in the slice.
 
-      # Length
+      - name: avg_product_volume
+        sql: "{CUBE.product_volume_cm3}"
+        type: avg
+        title: Avg Volume (cm³)
+        description: Mean bounding-box volume — the best single proxy for freight exposure.
+
+      # -- Length ----------------------------------------------------------
       - name: avg_product_length
         sql: "{CUBE}.product_length_cm"
         type: avg
+        title: Avg Length (cm)
+        description: Mean package length.
 
       - name: min_product_length
         sql: "{CUBE}.product_length_cm"
         type: min
+        title: Min Length (cm)
+        description: Shortest package length in the slice.
 
       - name: max_product_length
         sql: "{CUBE}.product_length_cm"
         type: max
+        title: Max Length (cm)
+        description: Longest package length in the slice.
 
-      # Height
+      # -- Height ----------------------------------------------------------
       - name: avg_product_height
         sql: "{CUBE}.product_height_cm"
         type: avg
+        title: Avg Height (cm)
+        description: Mean package height.
 
       - name: min_product_height
         sql: "{CUBE}.product_height_cm"
         type: min
+        title: Min Height (cm)
+        description: Smallest package height in the slice.
 
       - name: max_product_height
         sql: "{CUBE}.product_height_cm"
         type: max
+        title: Max Height (cm)
+        description: Largest package height in the slice.
 
-      # Width
+      # -- Width -----------------------------------------------------------
       - name: avg_product_width
         sql: "{CUBE}.product_width_cm"
         type: avg
+        title: Avg Width (cm)
+        description: Mean package width.
 
       - name: min_product_width
         sql: "{CUBE}.product_width_cm"
         type: min
+        title: Min Width (cm)
+        description: Smallest package width in the slice.
 
       - name: max_product_width
         sql: "{CUBE}.product_width_cm"
         type: max
+        title: Max Width (cm)
+        description: Largest package width in the slice.
+
+      - name: avg_photos
+        sql: "{CUBE}.product_photos_qty"
+        type: avg
+        title: Avg Photos
+        description: Mean number of listing photos — a listing-quality indicator.
 
     pre_aggregations:
       # Pre-aggregation definitions go here.

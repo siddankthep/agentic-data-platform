@@ -2,6 +2,16 @@ cubes:
   - name: customers
     sql_table: public.customers
     data_source: default
+    title: Customers
+    description: >
+      Buyers on the marketplace, with their delivery location. A dimension table: it holds no order or revenue figures.
+
+      Identity caveat — the most important thing to know about this cube:
+      `customer_id` is issued PER ORDER, so it is not a person. The same human
+      buying twice appears as two rows with the same `customer_unique_id` and
+      different `customer_id`. Count people with `unique_customers`; count
+      orders with `orders.distinct_orders`. Using `count` here silently counts
+      orders, not customers.
 
     joins: []
 
@@ -10,26 +20,72 @@ cubes:
         sql: "{CUBE}.customer_id"
         type: string
         primary_key: true
+        title: Customer Order Key
+        description: >
+          Per-order customer key and the primary key of this cube. NOT a person
+          identifier — see `customer_unique_id`. It exists to join to
+          `orders.customer_id`.
 
       - name: customer_unique_id
         sql: "{CUBE}.customer_unique_id"
         type: string
+        title: Customer ID
+        description: >
+          Stable identifier for an actual person across all their orders. The
+          right key for repeat purchase, retention and cohort analysis.
 
       - name: customer_city
         sql: "{CUBE}.customer_city"
         type: string
+        title: Customer City
+        description: >
+          Delivery city, lower-cased Brazilian Portuguese and not normalised
+          upstream — spelling variants of the same city exist. Prefer
+          `customer_state` for reliable geographic grouping.
 
       - name: customer_state
         sql: "{CUBE}.customer_state"
         type: string
+        title: Customer State
+        description: >
+          Two-letter Brazilian state code (SP, RJ, MG, …). Clean and reliable —
+          the recommended geographic grouping, and the strongest available
+          predictor of delivery time, since distance from the São Paulo seller
+          concentration drives transit days.
 
       - name: customer_zip_code_prefix
         sql: "{CUBE}.customer_zip_code_prefix"
         type: string
+        title: Customer Zip Prefix
+        description: >
+          First five digits of the Brazilian CEP postcode. Join to `geolocation`
+          for coordinates, noting that one prefix maps to many points.
 
     measures:
       - name: count
         type: count
+        title: Customer Records
+        description: >
+          Row count — one per order-scoped customer record, so this effectively
+          counts ORDERS, not people. Almost always the wrong measure; use
+          `unique_customers`.
+
+      - name: unique_customers
+        type: count_distinct
+        sql: "{CUBE}.customer_unique_id"
+        title: Customers
+        description: >
+          Number of distinct people. The correct customer count, and the
+          denominator for per-customer metrics.
+
+      - name: orders_per_customer
+        type: number
+        sql: "1.0 * {CUBE.count} / NULLIF({CUBE.unique_customers}, 0)"
+        title: Orders per Customer
+        description: >
+          Mean orders per person. Close to 1.0 for this marketplace — repeat
+          purchasing is rare in the Olist dataset, so read small differences
+          carefully.
 
     pre_aggregations:
       # Pre-aggregation definitions go here.

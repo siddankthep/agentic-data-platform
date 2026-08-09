@@ -2,6 +2,19 @@ cubes:
   - name: geolocation
     sql_table: public.geolocation
     data_source: default
+    title: Geolocation
+    description: >
+      Latitude/longitude points for Brazilian postcode prefixes, used for
+      mapping and distance calculations.
+
+      Grain warning — read before using: this table has NO primary key. One zip
+      prefix maps to many rows (many individual points), so joining it to
+      customers or sellers multiplies rows and inflates every measure. It is
+      deliberately left unjoined in this model.
+
+      Safe uses: standalone map rendering, and looking up a representative point
+      per prefix. If you need a distance calculation, aggregate to one row per
+      prefix first (e.g. average lat/lng) rather than joining this cube directly.
 
     joins: []
 
@@ -9,13 +22,23 @@ cubes:
       - name: geolocation_city
         sql: "{CUBE}.geolocation_city"
         type: string
+        title: City
+        description: >
+          City name in lower-cased Brazilian Portuguese, not normalised
+          upstream — spelling variants exist for the same city.
 
       - name: geolocation_state
         sql: "{CUBE}.geolocation_state"
         type: string
+        title: State
+        description: Two-letter Brazilian state code (SP, RJ, MG, …). Clean and reliable.
 
       - name: location
         type: geo
+        title: Coordinates
+        description: >
+          Latitude/longitude pair for map rendering. Each row is one point, not
+          a centroid for its postcode prefix.
         latitude:
           sql: "{CUBE}.geolocation_lat"
         longitude:
@@ -24,6 +47,10 @@ cubes:
     measures:
       - name: count
         type: count
+        title: Geo Points
+        description: >
+          Number of coordinate rows — point density, not a count of places or
+          postcodes. Do not read it as a measure of anything commercial.
 
     pre_aggregations:
       # Pre-aggregation definitions go here.

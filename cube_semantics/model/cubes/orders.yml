@@ -2,6 +2,20 @@ cubes:
   - name: orders
     sql_table: public.orders
     data_source: default
+    title: Orders
+    description: >
+      One row per order placed on the Olist marketplace — the central fact of
+      the model. An order is a customer's single checkout event; it may contain
+      several items (from several sellers), be settled by several payment
+      records, and receive one review.
+
+      Grain warning: joining to order_items or order_payments fans this table
+      out. Use `distinct_orders` rather than `count` whenever the query also
+      includes an item-level or payment-level member.
+
+      Time dimensions: prefer `order_purchase_timestamp` for volume and revenue
+      trends. The other four timestamps describe the fulfilment lifecycle and
+      are only populated as the order progresses.
 
     joins:
       - name: customers
@@ -25,46 +39,269 @@ cubes:
         sql: "{CUBE}.order_id"
         type: string
         primary_key: true
+        title: Order ID
+        description: Unique identifier of the order. The primary key of this cube.
 
       - name: customer_id
         sql: "{CUBE}.customer_id"
         type: string
+        title: Customer ID
+        description: >
+          Per-order customer key, unique to this order. This is NOT a stable
+          person identifier — use `customers.customer_unique_id` to count
+          distinct people or to measure repeat purchasing.
 
       - name: order_status
         sql: "{CUBE}.order_status"
         type: string
+        title: Order Status
+        description: >
+          Lifecycle state of the order: delivered, shipped, canceled,
+          unavailable, invoiced, processing, approved, created. Only
+          `delivered` orders reliably have a non-null
+          `order_delivered_customer_date`, so all delivery measures are
+          restricted to that status.
+
+      # -- Fulfilment lifecycle timestamps -------------------------------
+      - name: order_purchase_timestamp
+        sql: "{CUBE}.order_purchase_timestamp"
+        type: time
+        title: Purchase Date
+        description: >
+          When the customer placed the order. This is the default time
+          dimension for order volume, revenue and cohort analysis — prefer it
+          over the other timestamps unless the question is explicitly about
+          approval, handover or delivery timing.
 
       - name: order_approved_at
         sql: "{CUBE}.order_approved_at"
         type: time
+        title: Payment Approved At
+        description: >
+          When payment was approved. Use only for payment-approval latency
+          analysis; it is not the order date.
 
       - name: order_delivered_carrier_date
         sql: "{CUBE}.order_delivered_carrier_date"
         type: time
+        title: Handover to Carrier Date
+        description: >
+          When the seller handed the parcel to the logistics partner. The gap
+          between this and the purchase date is the seller's responsibility;
+          the gap after it is the carrier's.
 
       - name: order_delivered_customer_date
         sql: "{CUBE}.order_delivered_customer_date"
         type: time
+        title: Delivered to Customer Date
+        description: >
+          When the customer actually received the order. Null for every order
+          not yet delivered — this is the endpoint of all delivery-time
+          measures.
 
       - name: order_estimated_delivery_date
         sql: "{CUBE}.order_estimated_delivery_date"
         type: time
+        title: Estimated Delivery Date
+        description: >
+          The delivery date promised to the customer at purchase. Compare
+          against `order_delivered_customer_date` to measure promise accuracy —
+          that comparison is `delivery_vs_estimate_days`.
 
-      - name: order_purchase_timestamp
-        sql: "{CUBE}.order_purchase_timestamp"
-        type: time
+      # -- Derived delivery-performance dimensions -----------------------
+      - name: delivery_days
+        sql: >
+          EXTRACT(EPOCH FROM ({CUBE}.order_delivered_customer_date
+            - {CUBE}.order_purchase_timestamp)) / 86400.0
+        type: number
+        title: Delivery Days
+        description: >
+          End-to-end delivery time in days: purchase to customer receipt.
+          Fractional (6.5 = six and a half days). Null unless delivered. This
+          is the canonical definition of "delivery time" for the marketplace —
+          do not recompute it from the raw timestamps.
+
+      - name: delivery_vs_estimate_days
+        sql: >
+          EXTRACT(EPOCH FROM ({CUBE}.order_delivered_customer_date
+            - {CUBE}.order_estimated_delivery_date)) / 86400.0
+        type: number
+        title: Days vs Estimate
+        description: >
+          Actual delivery date minus the promised date, in days. NEGATIVE means
+          the order arrived EARLY (the normal case for Olist); positive means it
+          was late. Read the sign carefully when narrating results.
+
+      - name: seller_handling_days
+        sql: >
+          EXTRACT(EPOCH FROM ({CUBE}.order_delivered_carrier_date
+            - {CUBE}.order_purchase_timestamp)) / 86400.0
+        type: number
+        title: Seller Handling Days
+        description: >
+          Days from purchase to carrier handover — the portion of delivery time
+          the seller controls. Use with `carrier_transit_days` to attribute a
+          slow delivery to the seller or to the carrier.
+
+      - name: carrier_transit_days
+        sql: >
+          EXTRACT(EPOCH FROM ({CUBE}.order_delivered_customer_date
+            - {CUBE}.order_delivered_carrier_date)) / 86400.0
+        type: number
+        title: Carrier Transit Days
+        description: >
+          Days from carrier handover to customer receipt — the portion of
+          delivery time the logistics partner controls.
+
+      - name: is_late
+        sql: >
+          {CUBE}.order_delivered_customer_date
+            > {CUBE}.order_estimated_delivery_date
+        type: boolean
+        title: Delivered Late
+        description: >
+          True when the order arrived after its promised date. Null for orders
+          not yet delivered, so filtering on it implicitly excludes them.
 
     measures:
       - name: count
         type: count
+        title: Row Count
+        description: >
+          Raw row count. Only equals the number of orders when no fanning-out
+          cube (order_items, order_payments, order_reviews) is present in the
+          query. Prefer `distinct_orders` — it is correct in every case.
 
+      - name: distinct_orders
+        type: count_distinct
+        sql: "{CUBE}.order_id"
+        title: Orders
+        description: >
+          Number of distinct orders. Fan-out safe: use this whenever the query
+          also touches item, payment or review members.
+
+      - name: delivered_orders
+        type: count_distinct
+        sql: "{CUBE}.order_id"
+        filters:
+          - sql: >
+              {CUBE}.order_status = 'delivered'
+              AND {CUBE}.order_delivered_customer_date IS NOT NULL
+        title: Delivered Orders
+        description: >
+          Distinct orders that reached the customer. The denominator for every
+          delivery-performance rate below.
+
+      - name: late_deliveries
+        type: count_distinct
+        sql: "{CUBE}.order_id"
+        filters:
+          - sql: >
+              {CUBE}.order_delivered_customer_date
+                > {CUBE}.order_estimated_delivery_date
+        title: Late Deliveries
+        description: Distinct delivered orders that arrived after their promised date.
+
+      - name: on_time_deliveries
+        type: count_distinct
+        sql: "{CUBE}.order_id"
+        filters:
+          - sql: >
+              {CUBE}.order_delivered_customer_date
+                <= {CUBE}.order_estimated_delivery_date
+        title: On-Time Deliveries
+        description: Distinct delivered orders that arrived on or before their promised date.
+
+      # -- Delivery-time measures ----------------------------------------
+      - name: avg_delivery_days
+        type: avg
+        sql: "{CUBE.delivery_days}"
+        title: Avg Delivery Days
+        description: >
+          Mean end-to-end delivery time in days across delivered orders. The
+          headline delivery-speed metric. Nulls (undelivered orders) are
+          excluded automatically.
+
+          Caution: when grouped alongside item-level members this becomes an
+          item-weighted average — multi-item orders count more than once. For a
+          strict per-order figure, query it without item members.
+
+      - name: median_delivery_days
+        type: number
+        sql: >
+          PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY {CUBE.delivery_days})
+        title: Median Delivery Days
+        description: >
+          Median end-to-end delivery time. Prefer this over the mean when
+          reporting typical customer experience — the distribution has a long
+          right tail of extreme outliers.
+
+      - name: p90_delivery_days
+        type: number
+        sql: >
+          PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY {CUBE.delivery_days})
+        title: P90 Delivery Days
+        description: >
+          90th-percentile delivery time — the tail experience. The gap between
+          this and the median is the practical measure of delivery consistency.
+
+      - name: max_delivery_days
+        type: max
+        sql: "{CUBE.delivery_days}"
+        title: Slowest Delivery (Days)
+        description: Longest observed delivery time in the selected slice.
+
+      - name: avg_delivery_vs_estimate_days
+        type: avg
+        sql: "{CUBE.delivery_vs_estimate_days}"
+        title: Avg Days vs Estimate
+        description: >
+          Mean signed difference between actual and promised delivery date.
+          Negative means the marketplace beats its promise on average; the
+          magnitude is how conservative the estimate is.
+
+      - name: avg_seller_handling_days
+        type: avg
+        sql: "{CUBE.seller_handling_days}"
+        title: Avg Seller Handling Days
+        description: Mean days from purchase to carrier handover — seller-controlled latency.
+
+      - name: avg_carrier_transit_days
+        type: avg
+        sql: "{CUBE.carrier_transit_days}"
+        title: Avg Carrier Transit Days
+        description: Mean days from carrier handover to delivery — carrier-controlled latency.
+
+      # -- Rates ----------------------------------------------------------
+      - name: on_time_delivery_rate
+        type: number
+        sql: "1.0 * {CUBE.on_time_deliveries} / NULLIF({CUBE.delivered_orders}, 0)"
+        format: percent
+        title: On-Time Delivery Rate
+        description: >
+          Share of delivered orders that arrived on or before the promised
+          date. The marketplace's delivery-SLA metric. Ranges 0–1; rendered as
+          a percentage.
+
+      - name: late_delivery_rate
+        type: number
+        sql: "1.0 * {CUBE.late_deliveries} / NULLIF({CUBE.delivered_orders}, 0)"
+        format: percent
+        title: Late Delivery Rate
+        description: Share of delivered orders that missed the promised date. 1 − on-time rate.
+
+      # -- Coverage -------------------------------------------------------
       - name: latest_order_date
         type: max
         sql: "{CUBE}.order_purchase_timestamp"
+        title: Latest Order Date
+        description: Most recent purchase timestamp in the slice. Useful as a freshness check.
 
       - name: oldest_order_date
         type: min
         sql: "{CUBE}.order_purchase_timestamp"
+        title: Oldest Order Date
+        description: Earliest purchase timestamp in the slice.
 
     pre_aggregations:
       # Pre-aggregation definitions go here.

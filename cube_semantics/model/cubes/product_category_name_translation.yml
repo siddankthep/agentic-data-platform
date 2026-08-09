@@ -2,6 +2,15 @@ cubes:
   - name: product_category_name_translation
     sql_table: public.product_category_name_translation
     data_source: default
+    title: Category Translations
+    description: >
+      Lookup table mapping Portuguese product category names to English. Pure
+      reference data with no business measures.
+
+      You normally do not query this cube directly: `products` joins to it and
+      exposes the result as `products.category_english`, which is the dimension
+      to use for any category breakdown. Query it on its own only to inspect or
+      audit the mapping itself.
 
     joins: []
 
@@ -9,16 +18,29 @@ cubes:
       - name: product_category_name
         sql: "{CUBE}.product_category_name"
         type: string
+        primary_key: true
+        title: Category (Portuguese)
+        description: >
+          Raw Portuguese category label as it appears in `products`, e.g.
+          `cama_mesa_banho`. The join key and primary key.
 
       - name: product_category_name_english
         sql: "{CUBE}.product_category_name_english"
         type: string
+        title: Category (English)
+        description: >
+          English translation, e.g. `bed_bath_table`. Surfaced on the `products`
+          cube as `category_english` — prefer that path.
 
     measures:
       - name: count
         type: count
+        title: Categories
+        description: >
+          Number of category mappings in the lookup. A catalogue-coverage check,
+          not a business metric — a handful of product categories have no
+          translation row.
 
     pre_aggregations:
       # Pre-aggregation definitions go here.
       # Learn more in the documentation: https://cube.dev/docs/caching/pre-aggregations/getting-started
-

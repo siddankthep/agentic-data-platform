@@ -2,6 +2,19 @@ cubes:
   - name: sellers
     sql_table: public.sellers
     data_source: default
+    title: Sellers
+    description: >
+      Marketplace merchants — one row per seller, with their registered
+      location. A pure dimension table: it carries no sales figures of its own.
+
+      To measure seller performance, group these dimensions and pull measures
+      from `order_items` (revenue, units, shipping punctuality),
+      `orders` (delivery speed) and `order_reviews` (satisfaction). The
+      `seller_performance` view packages exactly that.
+
+      Location caveat: city and state are the seller's registered address, not
+      the dispatch origin. Treat them as an approximation when explaining
+      shipping distance.
 
     joins: []
 
@@ -10,22 +23,45 @@ cubes:
         sql: "{CUBE}.seller_id"
         type: string
         primary_key: true
+        title: Seller ID
+        description: Unique identifier of the seller. Opaque hash — not a readable business name.
 
       - name: seller_city
         sql: "{CUBE}.seller_city"
         type: string
+        title: Seller City
+        description: >
+          Registered city, lower-cased Brazilian Portuguese and not normalised
+          upstream — the same city can appear under spelling variants. Prefer
+          `seller_state` for reliable geographic grouping.
 
       - name: seller_state
         sql: "{CUBE}.seller_state"
         type: string
+        title: Seller State
+        description: >
+          Two-letter Brazilian state code (SP, RJ, MG, …). Clean and reliable —
+          the recommended geographic grouping. SP dominates the marketplace, so
+          expect a heavily skewed distribution.
 
       - name: seller_zip_code_prefix
         sql: "{CUBE}.seller_zip_code_prefix"
         type: string
+        title: Seller Zip Prefix
+        description: >
+          First five digits of the Brazilian CEP postcode. A coarse location
+          key; join to `geolocation` for coordinates, being aware that a prefix
+          maps to many points.
 
     measures:
       - name: count
         type: count
+        title: Sellers
+        description: >
+          Number of registered sellers. Counts registrations, not activity —
+          many sellers have no sales in any given period. For active sellers use
+          `order_items.distinct_sellers`, which counts only those with sales in
+          the slice.
 
     pre_aggregations:
       # Pre-aggregation definitions go here.

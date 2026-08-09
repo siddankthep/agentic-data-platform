@@ -1,8 +1,23 @@
 views:
   - name: order_economics
+    title: Order Economics
     description: >
-      Order-grain economics. Item revenue and payment value are aggregated
-      independently and joined on order dimensions — safe to combine.
+      Order-grain economics and delivery performance: how many orders, what they
+      were worth, how fast they arrived and how customers rated them. The
+      default view for company-level trend and health questions.
+
+      GRAIN: order level. Item revenue and payment value are aggregated
+      independently inside their own cubes and joined on order dimensions, so
+      they are safe to combine here despite both fanning out `orders`.
+
+      Two revenue figures are exposed deliberately, and they differ:
+        * `order_items_total_price`   — merchandise value, excluding freight.
+        * `order_payments_total_payment_value` — what customers actually paid,
+          including freight and instalment effects.
+      Pick one and name it explicitly; never present the pair as a discrepancy.
+
+      For per-seller or per-category breakdowns use the `seller_performance`
+      view instead — those questions need item grain.
 
     cubes:
       - join_path: orders
@@ -10,14 +25,41 @@ views:
           - order_purchase_timestamp
           - order_status
           - count
+          - distinct_orders
+          - delivered_orders
+          # delivery performance
+          - avg_delivery_days
+          - median_delivery_days
+          - p90_delivery_days
+          - avg_delivery_vs_estimate_days
+          - on_time_delivery_rate
+          - late_delivery_rate
+
+      - join_path: orders.customers
+        prefix: true
+        includes:
+          - customer_state
+          - unique_customers
 
       - join_path: orders.order_items
         prefix: true
         includes:
           - total_price
           - total_freight_value
+          - avg_items_per_order
 
       - join_path: orders.order_payments
         prefix: true
         includes:
           - total_payment_value
+          - avg_order_value
+          - payment_type
+
+      - join_path: orders.order_reviews
+        prefix: true
+        includes:
+          - avg_review_score
+          - reviewed_orders
+          - review_sentiment
+          - negative_review_rate
+          - nps_like_score
