@@ -1,0 +1,22 @@
+# Copy to terraform.tfvars if you would rather not drive Terraform from .env.
+#
+# The Makefile targets (`make tf-plan` / `make tf-apply`) pass these as TF_VAR_*
+# environment variables sourced from .env, so you do not need this file at all
+# in the normal workflow. It exists for running terraform directly.
+
+airbyte_workspace_id  = "00000000-0000-0000-0000-000000000000"
+airbyte_client_id     = "..." # abctl local credentials
+airbyte_client_secret = "..." # abctl local credentials
+
+stripe_account_id    = "acct_..."
+stripe_client_secret = "rk_test_..." # test-mode key
+
+postgres_password = "cube"
+
+# Host as seen from inside the kind cluster, not from your shell:
+#   docker network inspect kind -f '{{(index .IPAM.Config 0).Gateway}}'
+# postgres_host = "172.21.0.1"
+
+# Switch to a schedule once the manual runs look right.
+# sync_schedule_type   = "cron"
+# sync_cron_expression = "0 0 */6 * * ?"

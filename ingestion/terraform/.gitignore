@@ -1,0 +1,12 @@
+# Local state holds the Stripe and Postgres credentials in cleartext.
+*.tfstate
+*.tfstate.*
+.terraform/
+crash.log
+
+# .terraform.lock.hcl is deliberately NOT ignored — it pins provider hashes and
+# belongs in version control.
+
+# Real values; terraform.tfvars.example is the tracked template.
+*.tfvars
+!*.tfvars.example

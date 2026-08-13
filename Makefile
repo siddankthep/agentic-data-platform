@@ -1,7 +1,8 @@
 -include .env
 export
 
-.PHONY: init up down logs psql migrate-up migrate-down migrate-create migrate-force seed reset fix-perms
+.PHONY: init up down logs psql migrate-up migrate-down migrate-create migrate-force seed reset fix-perms \
+        $(INGESTION_TARGETS)
 
 COMPOSE_FILE   := docker-compose.yml
 # The compose file lives in cube_mcp/, so compose would otherwise pick up
@@ -73,3 +74,19 @@ reset:
 	@until $(COMPOSE) exec -T postgres pg_isready -U $(POSTGRES_USER) -d $(POSTGRES_DB) >/dev/null 2>&1; do sleep 1; done
 	$(MAKE) migrate-up
 	$(MAKE) seed
+
+# ---------------------------------------------------------------------------
+# Airbyte ingestion — delegated to ingestion/Makefile
+#
+# Airbyte itself runs in a kind cluster managed by abctl, entirely outside this
+# compose project. Terraform owns everything *inside* it: the Stripe source, the
+# Postgres destination and the connection between them. See ingestion/Makefile
+# for the actual recipes; this just forwards so `make sync` etc. still work
+# from the repo root.
+# ---------------------------------------------------------------------------
+
+INGESTION_TARGETS := airbyte-up airbyte-down airbyte-creds airbyte-streams airbyte-versions \
+                      tf-init tf-plan tf-apply tf-destroy tf-fmt sync
+
+$(INGESTION_TARGETS):
+	$(MAKE) -C ingestion $@

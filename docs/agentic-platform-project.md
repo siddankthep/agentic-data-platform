@@ -206,24 +206,36 @@ re-runnable in an interesting way. Replace it with:
 
 ### Deployment
 
-Use `abctl` (`abctl local install`) — it spins up Airbyte on a local kind
-cluster. Heavier than you'd like on RAM (budget ~8 GB); the alternative for a
-laptop-friendly setup is **PyAirbyte**, a Python library that runs connectors
-in-process with no platform. PyAirbyte is a legitimate simplification if the
-full platform fights you:
+**Decided: the full platform via `abctl local install`, configured with
+Terraform.** The project ran on PyAirbyte first — the library that executes
+connectors in-process with no platform — and that was the right way to get an
+end-to-end pipeline working in a day. It stopped being the right answer once
+Stripe was the source.
 
-```python
-import airbyte as ab
-source = ab.get_source("source-faker", config={"count": 50_000})
-source.select_all_streams()
-source.read(cache=ab.caches.PostgresCache(...))
-```
+The failure mode was typing. PyAirbyte loads through pandas, and Stripe's schema
+defeats it in two specific ways: fields declared as multi-type unions
+(`invoice_line_items.plan` is `["null","object","string"]`) fall back to a text
+column while the value is still a dict, and `read_json`'s date heuristic coerces
+epoch-int columns like `charges.created` into timestamps against a BIGINT
+column. Both surfaced as psycopg2 errors, and both had to be fixed by
+monkeypatching PyAirbyte's private internals — `_get_airbyte_type` and the
+Postgres writer's `pd.read_json` — which pinned the project to unversioned
+implementation details.
 
-You lose the UI, scheduling, and connection state management — but Dagster is
-doing your scheduling anyway. **Recommendation: start with PyAirbyte to get the
-pipeline working end-to-end in a day, then swap in the full platform once you
-want the UI, the connector catalog, and real STATE management.** Getting stuck
-on Kubernetes in week one is the most common way this project dies.
+The platform's destination connectors are typed Java, with no pandas in the load
+path, and get both cases right unprompted: those columns land as `jsonb` and
+`bigint` respectively. Deleting ~80 lines of patches was the whole argument.
+
+What the platform adds beyond that: real STATE management per stream, a UI for
+inspecting failed syncs, and connection-level schema-drift handling. What it
+costs: ~8 GB of RAM for the kind cluster.
+
+Configuration lives in `ingestion/terraform/`, not the UI — see `ingestion/terraform/README.md`. The
+UI is for *reading* state (job history, logs, catalog); every source,
+destination and connection is declared in HCL so the pipeline is reviewable and
+reproducible. Getting stuck on Kubernetes in week one is still the most common
+way this project dies, which is why `abctl` does the cluster and Terraform only
+talks to the API on top of it.
 
 ---
 

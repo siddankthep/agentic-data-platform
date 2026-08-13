@@ -14,7 +14,7 @@ services:
       - CUBEJS_DB_TYPE=postgres
       - CUBEJS_DB_HOST=postgres
       - CUBEJS_DB_PORT=5432
-      - CUBEJS_DB_NAME=${POSTGRES_DB:-olist}
+      - CUBEJS_DB_NAME=${POSTGRES_DB:-ecom}
       - CUBEJS_DB_USER=${POSTGRES_USER:-cube}
       - CUBEJS_DB_PASS=${POSTGRES_PASSWORD:-cube}
     volumes:
@@ -28,7 +28,7 @@ services:
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-cube}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cube}
-      POSTGRES_DB: ${POSTGRES_DB:-olist}
+      POSTGRES_DB: ${POSTGRES_DB:-ecom}
     ports:
       - ${POSTGRES_PORT:-5435}:5432
     volumes:
@@ -38,7 +38,7 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        - pg_isready -U ${POSTGRES_USER:-cube} -d ${POSTGRES_DB:-olist}
+        - pg_isready -U ${POSTGRES_USER:-cube} -d ${POSTGRES_DB:-ecom}
       interval: 5s
       timeout: 5s
       retries: 20
