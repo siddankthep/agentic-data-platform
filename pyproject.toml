@@ -7,6 +7,8 @@ requires-python = ">=3.12"
 # Ingestion is Airbyte-platform-side now, declared in terraform/ — the only
 # Python left is the Stripe sandbox seeder and the Cube MCP server.
 dependencies = [
+    "dbt-core>=1.12.2",
+    "dbt-postgres>=1.11.0",
     "httpx>=0.28.1",
     "mcp[cli]>=2.0.0",
     "python-dotenv>=1.2.2",
