@@ -1,0 +1,23 @@
+select
+    id as charge_id,
+    customer as customer_id,
+    invoice as invoice_id,
+    payment_intent as payment_intent_id,
+    dispute as dispute_id,
+    balance_transaction as balance_transaction_id,
+    status,
+    currency,
+    amount / 100.0 as amount,
+    amount_captured / 100.0 as amount_captured,
+    amount_refunded / 100.0 as amount_refunded,
+    paid as is_paid,
+    captured as is_captured,
+    refunded as is_refunded,
+    disputed as is_disputed,
+    failure_code,
+    failure_message,
+    payment_method_details -> 'card' ->> 'brand' as card_brand,
+    payment_method_details -> 'card' ->> 'last4' as card_last4,
+    to_timestamp(created) as created_at,
+    to_timestamp(updated) as updated_at
+from {{ source('stripe', 'charges') }}

@@ -1,0 +1,18 @@
+version: 2
+
+models:
+  - name: int_stripe__subscription_items_priced
+    description: >
+      Subscription items joined to their price, with `mrr_amount` --
+      the item's recurring cost normalized to a monthly figure regardless
+      of billing interval (day/week/month/year). This is where MRR is
+      defined; downstream models only aggregate it.
+    columns:
+      - name: subscription_item_id
+        data_tests: [unique, not_null]
+
+  - name: int_stripe__subscription_mrr
+    description: One row per subscription, summing `int_stripe__subscription_items_priced` to a subscription-level MRR.
+    columns:
+      - name: subscription_id
+        data_tests: [unique, not_null]

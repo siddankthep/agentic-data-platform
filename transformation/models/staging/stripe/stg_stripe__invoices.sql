@@ -1,0 +1,26 @@
+select
+    id as invoice_id,
+    customer as customer_id,
+    subscription as subscription_id,
+    number as invoice_number,
+    status,
+    currency,
+    amount_due / 100.0 as amount_due,
+    amount_paid / 100.0 as amount_paid,
+    amount_remaining / 100.0 as amount_remaining,
+    subtotal / 100.0 as subtotal,
+    total / 100.0 as total,
+    tax / 100.0 as tax,
+    paid as is_paid,
+    attempted as is_attempted,
+    attempt_count,
+    billing_reason,
+    collection_method,
+    to_timestamp(created) as created_at,
+    to_timestamp(due_date) as due_at,
+    to_timestamp(period_start) as period_started_at,
+    to_timestamp(period_end) as period_ended_at,
+    to_timestamp(effective_at) as effective_at,
+    to_timestamp(updated) as updated_at
+from {{ source('stripe', 'invoices') }}
+where coalesce(is_deleted, false) = false

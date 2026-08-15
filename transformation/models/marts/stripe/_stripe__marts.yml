@@ -1,0 +1,141 @@
+version: 2
+
+models:
+  - name: dim_customers
+    description: One row per customer, enriched with lifetime billing, payment and subscription metrics. The entry point for any "who is this customer" question.
+    columns:
+      - name: customer_id
+        description: Stripe customer id. Primary key.
+        data_tests: [unique, not_null]
+      - name: is_active_subscriber
+        description: True if the customer has at least one subscription in `active` or `trialing` status right now.
+      - name: lifetime_value
+        description: Sum of `amount_captured` across all succeeded charges. Gross revenue collected from this customer, before refunds.
+      - name: lifetime_refunded
+        description: Sum of `amount_refunded` across all charges.
+      - name: lifetime_billed
+        description: Sum of `amount_paid` across paid invoices. Differs from `lifetime_value` when charges happen outside the invoicing flow.
+
+  - name: dim_products
+    description: One row per product, joined to its default price and a monthly-normalized price for cross-plan comparison.
+    columns:
+      - name: product_id
+        description: Stripe product id. Primary key.
+        data_tests: [unique, not_null]
+      - name: monthly_price
+        description: The default price's amount normalized to a monthly cadence, regardless of its actual billing interval.
+
+  - name: dim_promotions
+    description: One row per redeemable promotion -- a promotion code where one exists, otherwise the coupon itself (coupons can be applied without a code).
+    columns:
+      - name: coupon_id
+        description: >
+          Underlying coupon id. Not unique alone -- a coupon can have
+          multiple promotion codes, each its own row. Nullable: at least
+          one promotion code in this account was created without a coupon
+          attached, a genuine upstream data gap, not a join bug.
+
+  - name: fct_subscriptions
+    description: >
+      One row per subscription, at its *current* state -- not a change
+      history. `mrr` is the grain to sum for total recurring revenue;
+      summing `fct_invoices.amount_paid` instead double-counts one-off
+      charges and undercounts future-dated recurring revenue.
+    columns:
+      - name: subscription_id
+        description: Stripe subscription id. Primary key.
+        data_tests: [unique, not_null]
+      - name: customer_id
+        data_tests:
+          - relationships:
+              to: ref('dim_customers')
+              field: customer_id
+      - name: mrr
+        description: Monthly recurring revenue contributed by this subscription, normalized across billing intervals. Defined in `int_stripe__subscription_items_priced`.
+      - name: is_active
+        description: True when status is `active` or `trialing`. Sum `mrr` filtered on this for total current MRR.
+
+  - name: fct_invoices
+    description: One row per invoice. The billing/AR (accounts receivable) fact -- what was owed and what was collected.
+    columns:
+      - name: invoice_id
+        description: Stripe invoice id. Primary key.
+        data_tests: [unique, not_null]
+      - name: customer_id
+        data_tests:
+          - relationships:
+              to: ref('dim_customers')
+              field: customer_id
+      - name: is_overdue
+        description: True when amount is still owed and either there's no due date or it has passed. Evaluated at model build time, not query time.
+
+  - name: fct_invoice_line_items
+    description: >
+      One row per invoice line. Useful for billing-composition detail
+      (what made up an invoice); `price_id` and `subscription_id` are
+      frequently null in this dataset -- prefer `fct_subscriptions.mrr`
+      for product/plan-level recurring revenue.
+    columns:
+      - name: invoice_line_item_id
+        data_tests: [unique, not_null]
+      - name: invoice_id
+        data_tests:
+          - relationships:
+              to: ref('fct_invoices')
+              field: invoice_id
+
+  - name: fct_charges
+    description: One row per charge attempt -- the payments fact. Grain is the attempt, not the customer or invoice.
+    columns:
+      - name: charge_id
+        description: Stripe charge id. Primary key.
+        data_tests: [unique, not_null]
+      - name: customer_id
+        data_tests:
+          - relationships:
+              to: ref('dim_customers')
+              field: customer_id
+      - name: net_amount
+        description: Amount after Stripe's processing fee (`amount - processing_fee`), from the linked balance transaction. What actually reaches the account balance.
+      - name: status
+        description: "succeeded, pending, or failed. Filter to succeeded for revenue; failed for decline-rate analysis (see failure_code)."
+
+  - name: fct_refunds
+    description: One row per refund. Denormalized with the refunded charge's customer for easy filtering.
+    columns:
+      - name: refund_id
+        data_tests: [unique, not_null]
+      - name: charge_id
+        data_tests:
+          - relationships:
+              to: ref('fct_charges')
+              field: charge_id
+
+  - name: fct_disputes
+    description: One row per dispute (chargeback). Small volumes, high signal -- disputes carry reputational and fee risk beyond the disputed amount.
+    columns:
+      - name: dispute_id
+        data_tests: [unique, not_null]
+      - name: charge_id
+        data_tests:
+          - relationships:
+              to: ref('fct_charges')
+              field: charge_id
+
+  - name: fct_payouts
+    description: One row per payout of available balance to the bank account. Empty in this test account -- test-mode payouts aren't triggered by the seed script.
+    columns:
+      - name: payout_id
+        data_tests: [unique, not_null]
+
+  - name: fct_balance_transactions
+    description: >
+      Stripe's ledger -- every event that moved the account balance, with
+      gross/fee/net. This is the reconciliation fact: sum `net` to get
+      what actually hit the Stripe balance, independent of invoice or
+      subscription state.
+    columns:
+      - name: balance_transaction_id
+        data_tests: [unique, not_null]
+      - name: net
+        description: amount - fee. What was actually added to (or removed from) the Stripe balance.

@@ -8,4 +8,4 @@ cube_semantics/.cubestore/
 __pycache__/
 *.py[cod]
 .cache/
-*.log
+logs/

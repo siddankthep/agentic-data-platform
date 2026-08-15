@@ -1,0 +1,36 @@
+version: 2
+
+sources:
+  - name: stripe
+    description: >
+      Raw Stripe objects landed verbatim by the Airbyte `source-stripe` ->
+      `destination-postgres` connection (see ingestion/terraform/). One table
+      per Stripe API object, synced incremental_deduped_history so each table
+      holds one current row per Stripe object id. Never queried directly by
+      BI or Cube — staging models are the only consumers.
+    database: ecom
+    schema: raw
+    loader: airbyte
+    loaded_at_field: _airbyte_extracted_at
+    tables:
+      - name: customers
+      - name: subscriptions
+      - name: subscription_items
+      - name: plans
+      - name: products
+      - name: prices
+      - name: invoices
+      - name: invoice_line_items
+      - name: invoice_items
+      - name: credit_notes
+      - name: payment_intents
+      - name: charges
+      - name: refunds
+      - name: disputes
+      - name: payouts
+      - name: balance_transactions
+      - name: checkout_sessions
+      - name: setup_intents
+      - name: coupons
+      - name: promotion_codes
+      - name: events

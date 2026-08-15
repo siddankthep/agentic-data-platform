@@ -1,0 +1,141 @@
+version: 2
+
+models:
+  - name: stg_stripe__customers
+    description: One row per Stripe customer. Soft-deleted customers are dropped.
+    columns:
+      - name: customer_id
+        data_tests: [unique, not_null]
+
+  - name: stg_stripe__products
+    description: Stripe product catalog entries (the sellable thing, independent of price).
+    columns:
+      - name: product_id
+        data_tests: [unique, not_null]
+
+  - name: stg_stripe__prices
+    description: Price points for products -- amount, currency and billing interval. A product can have several.
+    columns:
+      - name: price_id
+        data_tests: [unique, not_null]
+
+  - name: stg_stripe__plans
+    description: Legacy pre-Prices-API pricing object. Superseded by `stg_stripe__prices`; kept for completeness.
+    columns:
+      - name: plan_id
+        data_tests: [unique, not_null]
+
+  - name: stg_stripe__subscriptions
+    description: One row per subscription. Current-state only -- no history of plan/status changes.
+    columns:
+      - name: subscription_id
+        data_tests: [unique, not_null]
+      - name: customer_id
+        data_tests:
+          - relationships:
+              to: ref('stg_stripe__customers')
+              field: customer_id
+
+  - name: stg_stripe__subscription_items
+    description: One row per priced line within a subscription (a subscription can bundle several products).
+    columns:
+      - name: subscription_item_id
+        data_tests: [unique, not_null]
+
+  - name: stg_stripe__invoices
+    description: One row per invoice -- the billing document sent to a customer.
+    columns:
+      - name: invoice_id
+        data_tests: [unique, not_null]
+      - name: customer_id
+        data_tests:
+          - relationships:
+              to: ref('stg_stripe__customers')
+              field: customer_id
+
+  - name: stg_stripe__invoice_line_items
+    description: >
+      One row per line on an invoice. In this account, `price_id` and
+      `subscription_id` come back null for most lines -- see the model's
+      header comment before joining on them.
+    columns:
+      - name: invoice_line_item_id
+        data_tests: [unique, not_null]
+
+  - name: stg_stripe__invoice_items
+    description: One-off billed items (not tied to a subscription line) attached to an invoice.
+    columns:
+      - name: invoice_item_id
+        data_tests: [unique, not_null]
+
+  - name: stg_stripe__credit_notes
+    description: Credit notes issued against invoices (partial/full credits). Empty in this test account.
+    columns:
+      - name: credit_note_id
+        data_tests: [unique, not_null]
+
+  - name: stg_stripe__payment_intents
+    description: One row per payment intent -- the object tracking a payment attempt through its lifecycle.
+    columns:
+      - name: payment_intent_id
+        data_tests: [unique, not_null]
+
+  - name: stg_stripe__charges
+    description: One row per charge attempt (a specific attempt to move money on a card).
+    columns:
+      - name: charge_id
+        data_tests: [unique, not_null]
+
+  - name: stg_stripe__refunds
+    description: One row per refund issued against a charge.
+    columns:
+      - name: refund_id
+        data_tests: [unique, not_null]
+
+  - name: stg_stripe__disputes
+    description: One row per dispute (chargeback) raised against a charge.
+    columns:
+      - name: dispute_id
+        data_tests: [unique, not_null]
+
+  - name: stg_stripe__payouts
+    description: One row per payout of available balance to the connected bank account. Empty in this test account.
+    columns:
+      - name: payout_id
+        data_tests: [unique, not_null]
+
+  - name: stg_stripe__balance_transactions
+    description: Stripe's own ledger -- every event that moves the account balance (charges, refunds, fees, adjustments).
+    columns:
+      - name: balance_transaction_id
+        data_tests: [unique, not_null]
+
+  - name: stg_stripe__checkout_sessions
+    description: One row per Checkout session (the hosted payment/subscription funnel). Empty in this test account.
+    columns:
+      - name: checkout_session_id
+        data_tests: [unique, not_null]
+
+  - name: stg_stripe__setup_intents
+    description: One row per setup intent (saving a payment method for future use without charging it).
+    columns:
+      - name: setup_intent_id
+        data_tests: [unique, not_null]
+
+  - name: stg_stripe__coupons
+    description: Discount definitions (percent or amount off, duration).
+    columns:
+      - name: coupon_id
+        data_tests: [unique, not_null]
+
+  - name: stg_stripe__promotion_codes
+    description: Shareable, redeemable codes that apply a coupon.
+    columns:
+      - name: promotion_code_id
+        data_tests: [unique, not_null]
+
+  - name: stg_stripe__events
+    description: Stripe's audit trail of every object change. Staged for lineage/debugging; no mart is built on it.
+    columns:
+      - name: event_id
+        data_tests: [unique, not_null]
