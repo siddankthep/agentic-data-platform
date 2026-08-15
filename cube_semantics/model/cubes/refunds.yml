@@ -1,0 +1,81 @@
+cubes:
+  - name: refunds
+    sql_table: silver_marts.fct_refunds
+    data_source: default
+    title: Refunds
+    description: >
+      One row per refund. Denormalized with the refunded charge's
+      `customer_id` for easy filtering without an extra join.
+
+    joins: []
+
+    dimensions:
+      - name: refund_id
+        sql: "{CUBE}.refund_id"
+        type: string
+        primary_key: true
+        title: Refund ID
+
+      - name: charge_id
+        sql: "{CUBE}.charge_id"
+        type: string
+        title: Charge ID
+
+      - name: customer_id
+        sql: "{CUBE}.customer_id"
+        type: string
+        title: Customer ID
+
+      - name: payment_intent_id
+        sql: "{CUBE}.payment_intent_id"
+        type: string
+        title: Payment Intent ID
+
+      - name: status
+        sql: "{CUBE}.status"
+        type: string
+        title: Status
+        description: succeeded, pending, or failed.
+
+      - name: reason
+        sql: "{CUBE}.reason"
+        type: string
+        title: Reason
+        description: duplicate, fraudulent, requested_by_customer, or null.
+
+      - name: currency
+        sql: "{CUBE}.currency"
+        type: string
+        title: Currency
+
+      - name: created_at
+        sql: "{CUBE}.created_at"
+        type: time
+        title: Created At
+
+    measures:
+      - name: count
+        type: count
+        title: Refunds
+
+      - name: succeeded_refunds
+        type: count
+        filters:
+          - sql: "{CUBE}.status = 'succeeded'"
+        title: Succeeded Refunds
+
+      - name: amount_sum
+        type: sum
+        sql: "{CUBE}.amount"
+        title: Total Refunded
+        format: currency
+
+      - name: avg_refund_amount
+        type: number
+        sql: "{CUBE.amount_sum} / NULLIF({CUBE.count}, 0)"
+        format: currency
+        title: Avg Refund Amount
+
+    pre_aggregations:
+      # Pre-aggregation definitions go here.
+      # Learn more in the documentation: https://cube.dev/docs/caching/pre-aggregations/getting-started

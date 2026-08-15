@@ -1,0 +1,93 @@
+cubes:
+  - name: disputes
+    sql_table: silver_marts.fct_disputes
+    data_source: default
+    title: Disputes
+    description: >
+      One row per dispute (chargeback). Small volumes, high signal — disputes
+      carry reputational and fee risk beyond the disputed amount itself.
+      Denormalized with the disputed charge's `customer_id` for easy
+      filtering.
+
+    joins: []
+
+    dimensions:
+      - name: dispute_id
+        sql: "{CUBE}.dispute_id"
+        type: string
+        primary_key: true
+        title: Dispute ID
+
+      - name: charge_id
+        sql: "{CUBE}.charge_id"
+        type: string
+        title: Charge ID
+
+      - name: customer_id
+        sql: "{CUBE}.customer_id"
+        type: string
+        title: Customer ID
+
+      - name: status
+        sql: "{CUBE}.status"
+        type: string
+        title: Status
+        description: >
+          Stripe dispute lifecycle state, e.g. needs_response, under_review,
+          won, lost. `needs_response` means action is required now.
+
+      - name: reason
+        sql: "{CUBE}.reason"
+        type: string
+        title: Reason
+        description: The cardholder's stated reason, e.g. fraudulent, product_not_received, duplicate.
+
+      - name: currency
+        sql: "{CUBE}.currency"
+        type: string
+        title: Currency
+
+      - name: is_charge_refundable
+        sql: "{CUBE}.is_charge_refundable"
+        type: boolean
+        title: Charge Still Refundable
+        description: Whether the underlying charge can still be refunded — false once funds have been withdrawn for the dispute.
+
+      - name: created_at
+        sql: "{CUBE}.created_at"
+        type: time
+        title: Created At
+
+    measures:
+      - name: count
+        type: count
+        title: Disputes
+
+      - name: needs_response
+        type: count
+        filters:
+          - sql: "{CUBE}.status = 'needs_response'"
+        title: Needs Response
+        description: Open disputes requiring evidence submission now — the actionable queue.
+
+      - name: won_disputes
+        type: count
+        filters:
+          - sql: "{CUBE}.status = 'won'"
+        title: Won Disputes
+
+      - name: lost_disputes
+        type: count
+        filters:
+          - sql: "{CUBE}.status = 'lost'"
+        title: Lost Disputes
+
+      - name: amount_sum
+        type: sum
+        sql: "{CUBE}.amount"
+        title: Disputed Amount
+        format: currency
+
+    pre_aggregations:
+      # Pre-aggregation definitions go here.
+      # Learn more in the documentation: https://cube.dev/docs/caching/pre-aggregations/getting-started

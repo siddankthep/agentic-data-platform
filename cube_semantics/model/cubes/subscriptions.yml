@@ -1,0 +1,195 @@
+cubes:
+  - name: subscriptions
+    sql_table: silver_marts.fct_subscriptions
+    data_source: default
+    title: Subscriptions
+    description: >
+      One row per subscription, at its CURRENT state — not a change history.
+      This is where MRR is measured: `mrr` is normalized across billing
+      intervals (day/week/month/year) to a monthly figure in
+      `int_stripe__subscription_items_priced`, then summed per subscription
+      here. Sum `mrr` filtered to `is_active` (the `current_mrr` measure
+      below) for total current recurring revenue — do not derive MRR from
+      `invoices`, which mixes one-off and recurring charges and would both
+      double-count and undercount.
+
+      Known caveat: there's no plan-change history in this dataset (Stripe
+      won't backdate `created`, and the seed script doesn't use test clocks),
+      so there's no reliable way to build a new/expansion/contraction/churn
+      MRR waterfall from this cube yet — only a point-in-time snapshot.
+
+    joins: []
+
+    dimensions:
+      - name: subscription_id
+        sql: "{CUBE}.subscription_id"
+        type: string
+        primary_key: true
+        title: Subscription ID
+
+      - name: customer_id
+        sql: "{CUBE}.customer_id"
+        type: string
+        title: Customer ID
+
+      - name: status
+        sql: "{CUBE}.status"
+        type: string
+        title: Status
+        description: Stripe subscription status — active, trialing, canceled, etc. Use `is_active`/`is_trialing`/`is_canceled` for the common groupings.
+
+      - name: currency
+        sql: "{CUBE}.currency"
+        type: string
+        title: Currency
+
+      - name: cancel_at_period_end
+        sql: "{CUBE}.cancel_at_period_end"
+        type: boolean
+        title: Cancels at Period End
+        description: True when the subscription is still active but scheduled to cancel when the current period ends — the leading indicator of churn before `is_canceled` flips true.
+
+      - name: is_active
+        sql: "{CUBE}.is_active"
+        type: boolean
+        title: Active
+        description: True when status is active or trialing. The filter behind `current_mrr`.
+
+      - name: is_trialing
+        sql: "{CUBE}.is_trialing"
+        type: boolean
+        title: Trialing
+
+      - name: is_canceled
+        sql: "{CUBE}.is_canceled"
+        type: boolean
+        title: Canceled
+
+      - name: item_count
+        sql: "{CUBE}.item_count"
+        type: number
+        title: Item Count
+        description: Number of subscription items (price lines) making up this subscription.
+
+      - name: created_at
+        sql: "{CUBE}.created_at"
+        type: time
+        title: Created At
+
+      - name: started_at
+        sql: "{CUBE}.started_at"
+        type: time
+        title: Started At
+
+      - name: current_period_started_at
+        sql: "{CUBE}.current_period_started_at"
+        type: time
+        title: Current Period Start
+
+      - name: current_period_ends_at
+        sql: "{CUBE}.current_period_ends_at"
+        type: time
+        title: Current Period End
+
+      - name: trial_started_at
+        sql: "{CUBE}.trial_started_at"
+        type: time
+        title: Trial Started
+
+      - name: trial_ends_at
+        sql: "{CUBE}.trial_ends_at"
+        type: time
+        title: Trial Ends
+
+      - name: canceled_at
+        sql: "{CUBE}.canceled_at"
+        type: time
+        title: Canceled At
+
+      - name: ended_at
+        sql: "{CUBE}.ended_at"
+        type: time
+        title: Ended At
+
+    measures:
+      - name: count
+        type: count
+        title: Subscriptions
+        description: Row count — one per subscription, so this is a genuine subscription count. Safe at any grain.
+
+      - name: active_subscriptions
+        type: count
+        filters:
+          - sql: "{CUBE}.is_active"
+        title: Active Subscriptions
+
+      - name: trialing_subscriptions
+        type: count
+        filters:
+          - sql: "{CUBE}.is_trialing"
+        title: Trialing Subscriptions
+
+      - name: canceled_subscriptions
+        type: count
+        filters:
+          - sql: "{CUBE}.is_canceled"
+        title: Canceled Subscriptions
+
+      - name: pending_cancellations
+        type: count
+        filters:
+          - sql: "{CUBE}.cancel_at_period_end AND {CUBE}.is_active"
+        title: Pending Cancellations
+        description: Active subscriptions already scheduled to cancel at period end.
+
+      - name: mrr_sum
+        type: sum
+        sql: "{CUBE}.mrr"
+        title: MRR (All Statuses)
+        format: currency
+        description: Sum of MRR across every subscription in the slice regardless of status. Almost never what you want on its own — see `current_mrr`.
+
+      - name: current_mrr
+        type: sum
+        sql: "{CUBE}.mrr"
+        filters:
+          - sql: "{CUBE}.is_active"
+        title: Current MRR
+        format: currency
+        description: >
+          Total current monthly recurring revenue: sum of `mrr` restricted to
+          active/trialing subscriptions. THE headline recurring-revenue
+          number for this dataset — do not derive it from `invoices`.
+
+      - name: avg_mrr_per_subscription
+        type: number
+        sql: "{CUBE.current_mrr} / NULLIF({CUBE.active_subscriptions}, 0)"
+        format: currency
+        title: Avg MRR per Active Subscription
+
+      - name: recurring_amount_sum
+        type: sum
+        sql: "{CUBE}.recurring_amount"
+        title: Recurring Amount (List, Unnormalized)
+        format: currency
+        description: Sum of each subscription's recurring amount before monthly normalization — mixes different billing intervals, so it is not directly comparable across subscriptions. Prefer `current_mrr`.
+
+    pre_aggregations:
+      # Additive counts and MRR sums by day and status — the workhorse for
+      # "how is MRR trending" and "how many active subscriptions do we have"
+      # questions. count/active_subscriptions/etc. are all plain counts and
+      # mrr_sum is a plain sum, so this rolls up cleanly to any granularity.
+      - name: subscriptions_by_day_status
+        measures:
+          - count
+          - active_subscriptions
+          - trialing_subscriptions
+          - canceled_subscriptions
+          - mrr_sum
+        dimensions:
+          - status
+        time_dimension: created_at
+        granularity: day
+        partition_granularity: month
+        refresh_key:
+          every: 1 hour

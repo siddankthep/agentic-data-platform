@@ -1,0 +1,189 @@
+cubes:
+  - name: invoices
+    sql_table: silver_marts.fct_invoices
+    data_source: default
+    title: Invoices
+    description: >
+      One row per invoice — the billing / accounts-receivable fact: what was
+      owed and what was collected. `subscription_id` is null for one-off
+      (non-recurring) invoices.
+
+      No cube-level join to `subscriptions`: `customers` is the declared hub
+      for `subscriptions`, `invoices` and `charges` (see `customers.yml`), and
+      Cube's view join paths must follow the direction a join was actually
+      declared in — adding a second, direct invoices↔subscriptions edge on
+      top of the hub would create a cycle, which Cube's join-path resolution
+      rejects outright. `subscription_id` remains a plain, filterable
+      dimension here — just not a join target. To relate a subscription to
+      its invoices, query each cube separately (both roll up to `customers`)
+      rather than joining them directly.
+
+      For total recurring revenue use `subscriptions.current_mrr`, not a sum
+      over this cube — invoice totals mix one-off and recurring charges and
+      are billed at whatever cadence the subscription uses, not a normalized
+      monthly figure.
+
+    joins: []
+
+    dimensions:
+      - name: invoice_id
+        sql: "{CUBE}.invoice_id"
+        type: string
+        primary_key: true
+        title: Invoice ID
+
+      - name: customer_id
+        sql: "{CUBE}.customer_id"
+        type: string
+        title: Customer ID
+
+      - name: subscription_id
+        sql: "{CUBE}.subscription_id"
+        type: string
+        title: Subscription ID
+        description: Null for one-off invoices not tied to a subscription.
+
+      - name: invoice_number
+        sql: "{CUBE}.invoice_number"
+        type: string
+        title: Invoice Number
+
+      - name: status
+        sql: "{CUBE}.status"
+        type: string
+        title: Status
+        description: draft, open, paid, uncollectible, or void.
+
+      - name: currency
+        sql: "{CUBE}.currency"
+        type: string
+        title: Currency
+
+      - name: is_paid
+        sql: "{CUBE}.is_paid"
+        type: boolean
+        title: Paid
+
+      - name: is_attempted
+        sql: "{CUBE}.is_attempted"
+        type: boolean
+        title: Payment Attempted
+
+      - name: attempt_count
+        sql: "{CUBE}.attempt_count"
+        type: number
+        title: Attempt Count
+
+      - name: billing_reason
+        sql: "{CUBE}.billing_reason"
+        type: string
+        title: Billing Reason
+        description: Why the invoice was created — subscription_create, subscription_update, subscription_cycle, manual, etc.
+
+      - name: collection_method
+        sql: "{CUBE}.collection_method"
+        type: string
+        title: Collection Method
+        description: charge_automatically (Stripe charges the card on file) or send_invoice (customer pays manually by the due date).
+
+      - name: is_overdue
+        sql: "{CUBE}.is_overdue"
+        type: boolean
+        title: Overdue
+        description: >
+          True when amount is still owed and either there's no due date or it
+          has passed. Evaluated at dbt build time, so this reflects freshness
+          as of the last `dbt build`, not the current instant.
+
+      - name: created_at
+        sql: "{CUBE}.created_at"
+        type: time
+        title: Created At
+
+      - name: due_at
+        sql: "{CUBE}.due_at"
+        type: time
+        title: Due At
+
+      - name: period_started_at
+        sql: "{CUBE}.period_started_at"
+        type: time
+        title: Period Start
+
+      - name: period_ended_at
+        sql: "{CUBE}.period_ended_at"
+        type: time
+        title: Period End
+
+    measures:
+      - name: count
+        type: count
+        title: Invoices
+        description: Row count — one per invoice. Safe at any grain unless a fanning-out cube (invoice_line_items) is also in the query.
+
+      - name: paid_invoices
+        type: count
+        filters:
+          - sql: "{CUBE}.is_paid"
+        title: Paid Invoices
+
+      - name: overdue_invoices
+        type: count
+        filters:
+          - sql: "{CUBE}.is_overdue"
+        title: Overdue Invoices
+
+      - name: amount_due_sum
+        type: sum
+        sql: "{CUBE}.amount_due"
+        title: Total Amount Due
+        format: currency
+
+      - name: amount_paid_sum
+        type: sum
+        sql: "{CUBE}.amount_paid"
+        title: Total Amount Paid
+        format: currency
+        description: What was actually collected against these invoices.
+
+      - name: amount_remaining_sum
+        type: sum
+        sql: "{CUBE}.amount_remaining"
+        title: Total Outstanding (AR)
+        format: currency
+
+      - name: overdue_amount_sum
+        type: sum
+        sql: "{CUBE}.amount_remaining"
+        filters:
+          - sql: "{CUBE}.is_overdue"
+        title: Overdue Amount (AR)
+        format: currency
+        description: Outstanding balance restricted to overdue invoices — the number a collections process would chase first.
+
+      - name: collection_rate
+        type: number
+        sql: "1.0 * {CUBE.amount_paid_sum} / NULLIF({CUBE.amount_due_sum}, 0)"
+        format: percent
+        title: Collection Rate
+        description: Share of billed amount actually collected. Ranges 0–1.
+
+    pre_aggregations:
+      # Additive AR/billing rollup by day and status. amount_due_sum,
+      # amount_paid_sum and amount_remaining_sum are plain sums, so this
+      # answers "billing trend" and "AR trend" questions at any granularity.
+      - name: invoices_by_day_status
+        measures:
+          - count
+          - paid_invoices
+          - overdue_invoices
+          - amount_due_sum
+          - amount_paid_sum
+          - amount_remaining_sum
+        dimensions:
+          - status
+        time_dimension: created_at
+        granularity: day
+        partition_granularity: month
+        refresh_key:
+          every: 1 hour

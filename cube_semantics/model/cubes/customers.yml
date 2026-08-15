@@ -1,91 +1,162 @@
 cubes:
   - name: customers
-    sql_table: public.customers
+    sql_table: silver_marts.dim_customers
     data_source: default
     title: Customers
     description: >
-      Buyers on the marketplace, with their delivery location. A dimension table: it holds no order or revenue figures.
+      One row per Stripe customer, pre-enriched with lifetime billing, payment
+      and subscription totals — the entry point for any "who is this customer"
+      question. A dimension table: `customer_id` is the grain and the
+      lifetime_* columns are computed once in dbt (`marts/stripe/dim_customers.sql`),
+      not re-derived here, so this cube and the `subscriptions`/`invoices`/
+      `charges` cubes will always agree.
 
-      Identity caveat — the most important thing to know about this cube:
-      `customer_id` is issued PER ORDER, so it is not a person. The same human
-      buying twice appears as two rows with the same `customer_unique_id` and
-      different `customer_id`. Count people with `unique_customers`; count
-      orders with `orders.distinct_orders`. Using `count` here silently counts
-      orders, not customers.
+      `email` is personal data — treat it as sensitive in any output that
+      leaves this system.
 
-    joins: []
+    joins:
+      - name: subscriptions
+        sql: "{CUBE.customer_id} = {subscriptions.customer_id}"
+        relationship: one_to_many
+
+      - name: invoices
+        sql: "{CUBE.customer_id} = {invoices.customer_id}"
+        relationship: one_to_many
+
+      - name: charges
+        sql: "{CUBE.customer_id} = {charges.customer_id}"
+        relationship: one_to_many
 
     dimensions:
       - name: customer_id
         sql: "{CUBE}.customer_id"
         type: string
         primary_key: true
-        title: Customer Order Key
-        description: >
-          Per-order customer key and the primary key of this cube. NOT a person
-          identifier — see `customer_unique_id`. It exists to join to
-          `orders.customer_id`.
-
-      - name: customer_unique_id
-        sql: "{CUBE}.customer_unique_id"
-        type: string
         title: Customer ID
-        description: >
-          Stable identifier for an actual person across all their orders. The
-          right key for repeat purchase, retention and cohort analysis.
+        description: Stripe customer id. The primary key of this cube and the join key from every other cube.
 
-      - name: customer_city
-        sql: "{CUBE}.customer_city"
+      - name: customer_name
+        sql: "{CUBE}.customer_name"
         type: string
-        title: Customer City
-        description: >
-          Delivery city, lower-cased Brazilian Portuguese and not normalised
-          upstream — spelling variants of the same city exist. Prefer
-          `customer_state` for reliable geographic grouping.
+        title: Name
 
-      - name: customer_state
-        sql: "{CUBE}.customer_state"
+      - name: email
+        sql: "{CUBE}.email"
         type: string
-        title: Customer State
-        description: >
-          Two-letter Brazilian state code (SP, RJ, MG, …). Clean and reliable —
-          the recommended geographic grouping, and the strongest available
-          predictor of delivery time, since distance from the São Paulo seller
-          concentration drives transit days.
+        title: Email
+        description: Personal data. Avoid surfacing this in aggregate reports.
 
-      - name: customer_zip_code_prefix
-        sql: "{CUBE}.customer_zip_code_prefix"
+      - name: country
+        sql: "{CUBE}.country"
         type: string
-        title: Customer Zip Prefix
+        title: Country
+
+      - name: currency
+        sql: "{CUBE}.currency"
+        type: string
+        title: Currency
         description: >
-          First five digits of the Brazilian CEP postcode. Join to `geolocation`
-          for coordinates, noting that one prefix maps to many points.
+          Customer's billing currency. Everything in this account is `usd`
+          today — see the platform docs for what changes if a second currency
+          shows up.
+
+      - name: account_balance
+        sql: "{CUBE}.account_balance"
+        type: number
+        title: Account Balance
+        description: >
+          Stripe customer balance, in Stripe's sign convention: negative means
+          Stripe owes the customer a credit (applied to the next invoice),
+          positive means the customer owes Stripe outside of any invoice.
+          Zero for almost every customer in this dataset.
+
+      - name: is_delinquent
+        sql: "{CUBE}.is_delinquent"
+        type: boolean
+        title: Delinquent
+        description: True when Stripe has marked the customer delinquent — a charge or invoice has failed and hasn't been resolved.
+
+      - name: is_active_subscriber
+        sql: "{CUBE}.is_active_subscriber"
+        type: boolean
+        title: Active Subscriber
+        description: True when the customer has at least one subscription in `active` or `trialing` status right now. A point-in-time flag, computed at dbt build time.
+
+      - name: created_at
+        sql: "{CUBE}.created_at"
+        type: time
+        title: Customer Since
+
+      - name: first_subscription_started_at
+        sql: "{CUBE}.first_subscription_started_at"
+        type: time
+        title: First Subscription Started
+        description: Null for customers who never subscribed (charge-only or trial-abandoned customers).
 
     measures:
       - name: count
         type: count
-        title: Customer Records
-        description: >
-          Row count — one per order-scoped customer record, so this effectively
-          counts ORDERS, not people. Almost always the wrong measure; use
-          `unique_customers`.
-
-      - name: unique_customers
-        type: count_distinct
-        sql: "{CUBE}.customer_unique_id"
         title: Customers
-        description: >
-          Number of distinct people. The correct customer count, and the
-          denominator for per-customer metrics.
+        description: Number of customers. Safe at any grain — this is a true dimension table, one row per customer, no fan-out risk.
 
-      - name: orders_per_customer
+      - name: active_subscribers
+        type: count
+        filters:
+          - sql: "{CUBE}.is_active_subscriber"
+        title: Active Subscribers
+        description: Customers with at least one active or trialing subscription right now.
+
+      - name: active_subscriber_rate
         type: number
-        sql: "1.0 * {CUBE.count} / NULLIF({CUBE.unique_customers}, 0)"
-        title: Orders per Customer
+        sql: "1.0 * {CUBE.active_subscribers} / NULLIF({CUBE.count}, 0)"
+        format: percent
+        title: Active Subscriber Rate
+        description: Share of customers in the slice who are currently active subscribers.
+
+      - name: delinquent_customers
+        type: count
+        filters:
+          - sql: "{CUBE}.is_delinquent"
+        title: Delinquent Customers
+
+      - name: lifetime_value_sum
+        type: sum
+        sql: "{CUBE}.lifetime_value"
+        title: Total Lifetime Value
+        format: currency
         description: >
-          Mean orders per person. Close to 1.0 for this marketplace — repeat
-          purchasing is rare in the Olist dataset, so read small differences
-          carefully.
+          Sum of `amount_captured` across all succeeded charges — gross
+          revenue collected, before refunds. Defined once in
+          `dim_customers.sql`; do not recompute from `charges`.
+
+      - name: lifetime_refunded_sum
+        type: sum
+        sql: "{CUBE}.lifetime_refunded"
+        title: Total Lifetime Refunded
+        format: currency
+
+      - name: net_lifetime_value_sum
+        type: number
+        sql: "{CUBE.lifetime_value_sum} - {CUBE.lifetime_refunded_sum}"
+        title: Net Lifetime Value
+        format: currency
+        description: Gross lifetime value minus lifetime refunds. Tracked separately upstream so you can choose gross or net depending on the question.
+
+      - name: avg_lifetime_value
+        type: number
+        sql: "{CUBE.lifetime_value_sum} / NULLIF({CUBE.count}, 0)"
+        format: currency
+        title: Avg Lifetime Value
+
+      - name: lifetime_billed_sum
+        type: sum
+        sql: "{CUBE}.lifetime_billed"
+        title: Total Lifetime Billed
+        format: currency
+        description: >
+          Sum of `amount_paid` across paid invoices. Differs from
+          `lifetime_value_sum` when charges happen outside the invoicing flow
+          (e.g. one-off PaymentIntents).
 
     pre_aggregations:
       # Pre-aggregation definitions go here.

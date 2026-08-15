@@ -1,0 +1,96 @@
+cubes:
+  - name: payouts
+    sql_table: silver_marts.fct_payouts
+    data_source: default
+    title: Payouts
+    description: >
+      One row per payout of available balance to the bank account. Empty in
+      this test account — test-mode payouts aren't triggered by the seed
+      script, so every measure below will read zero/null until real payout
+      activity exists.
+
+    joins: []
+
+    dimensions:
+      - name: payout_id
+        sql: "{CUBE}.payout_id"
+        type: string
+        primary_key: true
+        title: Payout ID
+
+      - name: destination_id
+        sql: "{CUBE}.destination_id"
+        type: string
+        title: Destination ID
+        description: The bank account or card the payout was sent to.
+
+      - name: status
+        sql: "{CUBE}.status"
+        type: string
+        title: Status
+        description: paid, pending, in_transit, canceled, or failed.
+
+      - name: payout_type
+        sql: "{CUBE}.payout_type"
+        type: string
+        title: Payout Type
+        description: bank_account or card.
+
+      - name: payout_method
+        sql: "{CUBE}.payout_method"
+        type: string
+        title: Payout Method
+        description: standard or instant.
+
+      - name: currency
+        sql: "{CUBE}.currency"
+        type: string
+        title: Currency
+
+      - name: is_automatic
+        sql: "{CUBE}.is_automatic"
+        type: boolean
+        title: Automatic
+        description: True for Stripe's automatic payout schedule; false for a manually triggered payout.
+
+      - name: failure_code
+        sql: "{CUBE}.failure_code"
+        type: string
+        title: Failure Code
+
+      - name: failure_message
+        sql: "{CUBE}.failure_message"
+        type: string
+        title: Failure Message
+
+      - name: created_at
+        sql: "{CUBE}.created_at"
+        type: time
+        title: Created At
+
+      - name: arrival_date
+        sql: "{CUBE}.arrival_date"
+        type: time
+        title: Arrival Date
+        description: Expected or actual date funds arrive in the bank account.
+
+    measures:
+      - name: count
+        type: count
+        title: Payouts
+
+      - name: amount_sum
+        type: sum
+        sql: "{CUBE}.amount"
+        title: Total Payouts
+        format: currency
+
+      - name: amount_reversed_sum
+        type: sum
+        sql: "{CUBE}.amount_reversed"
+        title: Total Reversed
+        format: currency
+
+    pre_aggregations:
+      # Pre-aggregation definitions go here.
+      # Learn more in the documentation: https://cube.dev/docs/caching/pre-aggregations/getting-started

@@ -1,0 +1,135 @@
+cubes:
+  - name: promotions
+    sql_table: silver_marts.dim_promotions
+    data_source: default
+    title: Promotions
+    description: >
+      One row per redeemable promotion: a shareable promotion code where one
+      exists, otherwise the underlying coupon itself (coupons can be applied
+      directly, without a code). A dimension table with no revenue figures of
+      its own — it describes discounts that exist, not discounts that were
+      applied to a specific invoice.
+
+      Neither `promotion_code_id` nor `coupon_id` alone is populated on every
+      row (a promotion code can exist without a coupon attached, and a coupon
+      can exist without any promotion code), which is why the primary key is
+      the synthetic `promotion_key` below rather than either raw id.
+
+    joins: []
+
+    dimensions:
+      - name: promotion_key
+        sql: "COALESCE({CUBE}.promotion_code_id, {CUBE}.coupon_id)"
+        type: string
+        primary_key: true
+        title: Promotion Key
+        description: Synthetic key — promotion_code_id when one exists, otherwise coupon_id. Neither raw column is non-null on every row.
+
+      - name: promotion_code_id
+        sql: "{CUBE}.promotion_code_id"
+        type: string
+        title: Promotion Code ID
+        description: Null when this row represents a coupon with no shareable code.
+
+      - name: code
+        sql: "{CUBE}.code"
+        type: string
+        title: Redeemable Code
+        description: The human-facing code customers type at checkout. Null when this row represents a coupon with no code.
+
+      - name: coupon_id
+        sql: "{CUBE}.coupon_id"
+        type: string
+        title: Coupon ID
+        description: Underlying coupon id. Null for the rare promotion code created without a coupon attached — a genuine upstream data gap, not a join bug.
+
+      - name: coupon_name
+        sql: "{CUBE}.coupon_name"
+        type: string
+        title: Coupon Name
+
+      - name: discount_type
+        sql: >
+          CASE
+            WHEN {CUBE}.percent_off IS NOT NULL THEN 'percent'
+            WHEN {CUBE}.amount_off IS NOT NULL THEN 'amount'
+            ELSE 'unknown'
+          END
+        type: string
+        title: Discount Type
+        description: Whether the discount is a percentage off or a fixed amount off. A coupon has exactly one of `percent_off`/`amount_off` set.
+
+      - name: percent_off
+        sql: "{CUBE}.percent_off"
+        type: number
+        title: Percent Off
+
+      - name: amount_off
+        sql: "{CUBE}.amount_off"
+        type: number
+        title: Amount Off
+
+      - name: currency
+        sql: "{CUBE}.currency"
+        type: string
+        title: Currency
+        description: Only set for amount_off coupons; null for percent_off ones.
+
+      - name: duration
+        sql: "{CUBE}.duration"
+        type: string
+        title: Duration
+        description: once, repeating, or forever — how many billing cycles the discount applies to.
+
+      - name: duration_in_months
+        sql: "{CUBE}.duration_in_months"
+        type: number
+        title: Duration (Months)
+        description: Only set when duration = repeating.
+
+      - name: is_active
+        sql: "{CUBE}.is_active"
+        type: boolean
+        title: Active
+        description: For promotion codes, whether the code is currently redeemable; for coupon-only rows, whether the coupon is currently valid.
+
+      - name: times_redeemed
+        sql: "{CUBE}.times_redeemed"
+        type: number
+        title: Times Redeemed
+
+      - name: max_redemptions
+        sql: "{CUBE}.max_redemptions"
+        type: number
+        title: Max Redemptions
+        description: Null means unlimited.
+
+      - name: created_at
+        sql: "{CUBE}.created_at"
+        type: time
+        title: Created At
+
+      - name: expires_at
+        sql: "{CUBE}.expires_at"
+        type: time
+        title: Expires At
+
+    measures:
+      - name: count
+        type: count
+        title: Promotions
+
+      - name: active_promotions
+        type: count
+        filters:
+          - sql: "{CUBE}.is_active"
+        title: Active Promotions
+
+      - name: times_redeemed_sum
+        type: sum
+        sql: "{CUBE}.times_redeemed"
+        title: Total Redemptions
+
+    pre_aggregations:
+      # Pre-aggregation definitions go here.
+      # Learn more in the documentation: https://cube.dev/docs/caching/pre-aggregations/getting-started

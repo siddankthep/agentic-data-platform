@@ -1,0 +1,125 @@
+cubes:
+  - name: invoice_line_items
+    sql_table: silver_marts.fct_invoice_line_items
+    data_source: default
+    title: Invoice Line Items
+    description: >
+      One row per invoice line — the finest grain in the billing model.
+      Useful for billing-composition detail (what made up an invoice); use
+      `description` for human-readable line detail.
+
+      Grain warning: this cube fans out `invoices`. Any query mixing line
+      measures with invoice measures must use `invoices.count` (or another
+      invoices measure) for the invoice-level figure, not this cube's `count`.
+
+      Weak join keys: `price_id` and `subscription_id` come back null on most
+      lines in this account — Stripe didn't backfill them from the parent
+      invoice. Do not join this cube to `products` or `subscriptions`; use
+      `subscriptions.mrr` for product/plan revenue splits instead.
+
+    joins:
+      - name: invoices
+        sql: "{CUBE.invoice_id} = {invoices.invoice_id}"
+        relationship: many_to_one
+
+    dimensions:
+      - name: invoice_line_item_id
+        sql: "{CUBE}.invoice_line_item_id"
+        type: string
+        primary_key: true
+        title: Invoice Line Item ID
+
+      - name: invoice_id
+        sql: "{CUBE}.invoice_id"
+        type: string
+        title: Invoice ID
+
+      - name: customer_id
+        sql: "{CUBE}.customer_id"
+        type: string
+        title: Customer ID
+
+      - name: subscription_id
+        sql: "{CUBE}.subscription_id"
+        type: string
+        title: Subscription ID
+        description: Frequently null — see the weak-join-key caveat on this cube.
+
+      - name: price_id
+        sql: "{CUBE}.price_id"
+        type: string
+        title: Price ID
+        description: Frequently null — see the weak-join-key caveat on this cube.
+
+      - name: description
+        sql: "{CUBE}.description"
+        type: string
+        title: Line Description
+        description: Human-readable detail of what this line represents. The most reliable field for understanding invoice composition given the weak id columns.
+
+      - name: currency
+        sql: "{CUBE}.currency"
+        type: string
+        title: Currency
+
+      - name: quantity
+        sql: "{CUBE}.quantity"
+        type: number
+        title: Quantity
+
+      - name: is_proration
+        sql: "{CUBE}.is_proration"
+        type: boolean
+        title: Proration
+        description: True when this line is a mid-cycle proration adjustment rather than a regular charge.
+
+      - name: period_started_at
+        sql: "{CUBE}.period_started_at"
+        type: time
+        title: Period Start
+
+      - name: period_ended_at
+        sql: "{CUBE}.period_ended_at"
+        type: time
+        title: Period End
+
+      - name: invoice_created_at
+        sql: "{CUBE}.invoice_created_at"
+        type: time
+        title: Invoice Created At
+
+    measures:
+      - name: count
+        type: count
+        title: Line Items
+        description: Number of line items. Only equals invoice count when no multi-line invoice is present — prefer `invoices.count` for an invoice-level figure.
+
+      - name: distinct_invoices
+        type: count_distinct
+        sql: "{CUBE}.invoice_id"
+        title: Invoices with Lines
+        description: Distinct invoices represented in the slice. Fan-out safe.
+
+      - name: amount_sum
+        type: sum
+        sql: "{CUBE}.amount"
+        title: Line Item Total
+        format: currency
+
+      - name: avg_amount
+        type: number
+        sql: "{CUBE.amount_sum} / NULLIF({CUBE.count}, 0)"
+        format: currency
+        title: Avg Line Amount
+
+      - name: proration_amount_sum
+        type: sum
+        sql: "{CUBE}.amount"
+        filters:
+          - sql: "{CUBE}.is_proration"
+        title: Proration Amount
+        format: currency
+
+    pre_aggregations:
+      # Pre-aggregation definitions go here.
+      # Learn more in the documentation: https://cube.dev/docs/caching/pre-aggregations/getting-started

@@ -1,0 +1,112 @@
+cubes:
+  - name: balance_transactions
+    sql_table: silver_marts.fct_balance_transactions
+    data_source: default
+    title: Balance Transactions
+    description: >
+      Stripe's ledger — every event that moved the account balance, with
+      gross/fee/net for each one. This is the reconciliation fact: sum `net`
+      to get what actually hit the Stripe balance, independent of what
+      `invoices` or `subscriptions` say was owed.
+
+      `source_id` references whatever object caused the entry (a charge,
+      refund, payout, adjustment, …) — it is polymorphic, not a clean foreign
+      key to any single cube, so this cube is deliberately left unjoined.
+      Use `transaction_type`/`reporting_category` to understand what kind of
+      event each row is instead of trying to join it.
+
+    joins: []
+
+    dimensions:
+      - name: balance_transaction_id
+        sql: "{CUBE}.balance_transaction_id"
+        type: string
+        primary_key: true
+        title: Balance Transaction ID
+
+      - name: source_id
+        sql: "{CUBE}.source_id"
+        type: string
+        title: Source ID
+        description: Id of the originating object (charge, refund, payout, …). Polymorphic — do not join on it.
+
+      - name: transaction_type
+        sql: "{CUBE}.transaction_type"
+        type: string
+        title: Transaction Type
+        description: charge, refund, adjustment, payout, etc.
+
+      - name: reporting_category
+        sql: "{CUBE}.reporting_category"
+        type: string
+        title: Reporting Category
+        description: Stripe's normalized category for the transaction — the recommended dimension for P&L-style reporting.
+
+      - name: status
+        sql: "{CUBE}.status"
+        type: string
+        title: Status
+
+      - name: currency
+        sql: "{CUBE}.currency"
+        type: string
+        title: Currency
+
+      - name: description
+        sql: "{CUBE}.description"
+        type: string
+        title: Description
+
+      - name: created_at
+        sql: "{CUBE}.created_at"
+        type: time
+        title: Created At
+
+      - name: available_on
+        sql: "{CUBE}.available_on"
+        type: time
+        title: Available On
+        description: When these funds become available for payout.
+
+    measures:
+      - name: count
+        type: count
+        title: Ledger Entries
+
+      - name: amount_sum
+        type: sum
+        sql: "{CUBE}.amount"
+        title: Gross Amount
+        format: currency
+
+      - name: fee_sum
+        type: sum
+        sql: "{CUBE}.fee"
+        title: Total Fees
+        format: currency
+
+      - name: net_sum
+        type: sum
+        sql: "{CUBE}.net"
+        title: Net Balance Movement
+        format: currency
+        description: amount - fee, summed. What was actually added to (or removed from) the Stripe balance — the reconciliation total.
+
+    pre_aggregations:
+      # Additive reconciliation rollup by day and reporting category —
+      # amount_sum, fee_sum and net_sum are plain sums, so this serves any
+      # granularity from a daily build.
+      - name: ledger_by_day_category
+        measures:
+          - count
+          - amount_sum
+          - fee_sum
+          - net_sum
+        dimensions:
+          - reporting_category
+          - transaction_type
+        time_dimension: created_at
+        granularity: day
+        partition_granularity: month
+        refresh_key:
+          every: 1 hour

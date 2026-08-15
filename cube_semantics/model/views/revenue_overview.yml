@@ -1,0 +1,66 @@
+views:
+  - name: revenue_overview
+    title: Revenue Overview
+    description: >
+      Company-level recurring revenue, billing and collections — the default
+      view for "how's the business doing" questions. Subscription/MRR members
+      are left unprefixed since MRR is the headline recurring-revenue number
+      for this dataset, even though the underlying join path runs through
+      `customers` (the declared hub — see `customers.yml`).
+
+      GRAIN WARNING — read before combining members from different cubes:
+      this view fans out `subscriptions` when invoice or charge members are
+      also selected (one subscription can have many invoices and many
+      charges). `current_mrr` and the other subscription measures are correct
+      on their own or grouped only by subscription/customer dimensions; once
+      you add an invoice or charge measure to the same query, subscription
+      counts and MRR become invoice/charge-weighted. Prefer querying the
+      subscription-revenue question and the billing/collections question
+      separately rather than in one row set.
+
+      Three related-but-different dollar figures are exposed on purpose:
+        * `current_mrr` — normalized recurring revenue, active subscriptions only.
+        * `invoices_amount_paid_sum` — what was actually billed and collected.
+        * `charges_net_amount_sum` — what actually hit the account balance, net of Stripe's fee.
+      Name the one you're using explicitly; never present them as a discrepancy.
+
+    cubes:
+      - join_path: customers.subscriptions
+        includes:
+          - status
+          - created_at
+          - count
+          - active_subscriptions
+          - trialing_subscriptions
+          - canceled_subscriptions
+          - pending_cancellations
+          - current_mrr
+          - avg_mrr_per_subscription
+
+      - join_path: customers
+        prefix: true
+        includes:
+          - country
+          - count
+          - active_subscriber_rate
+
+      - join_path: customers.invoices
+        prefix: true
+        includes:
+          - status
+          - is_overdue
+          - count
+          - amount_paid_sum
+          - amount_remaining_sum
+          - overdue_amount_sum
+          - collection_rate
+
+      - join_path: customers.charges
+        prefix: true
+        includes:
+          - status
+          - count
+          - succeeded_charges
+          - failed_charges
+          - success_rate
+          - net_amount_sum

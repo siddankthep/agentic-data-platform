@@ -1,0 +1,70 @@
+views:
+  - name: customer_health
+    title: Customer Health
+    description: >
+      Customer-facing scorecard: value, subscription status, payment
+      reliability and dispute exposure per account. Built for account
+      management and churn/collections triage.
+
+      GRAIN: customer level for the root `customers` members (lifetime
+      totals are already pre-aggregated per customer in `dim_customers`, so
+      they're exact here). Members pulled from `subscriptions`, `invoices`,
+      `charges` and `refunds` fan out per customer when a customer has more
+      than one row in those cubes — read them as "this account's current
+      subscription/billing/payment picture," not as strictly additive
+      per-customer figures if you also group by a fanning-out dimension.
+
+      Use `is_delinquent` and `charges_failed_charges` together to
+      distinguish "hasn't paid recently" from "actively failing to pay."
+
+    cubes:
+      # -- Who: the account -----------------------------------------------
+      - join_path: customers
+        includes:
+          - customer_id
+          - customer_name
+          - country
+          - created_at
+          - is_delinquent
+          - is_active_subscriber
+          - count
+          - active_subscribers
+          - lifetime_value_sum
+          - net_lifetime_value_sum
+          - lifetime_refunded_sum
+
+      # -- Subscription status ---------------------------------------------
+      - join_path: customers.subscriptions
+        prefix: true
+        includes:
+          - status
+          - cancel_at_period_end
+          - current_mrr
+          - active_subscriptions
+          - pending_cancellations
+
+      # -- Billing / AR ------------------------------------------------------
+      - join_path: customers.invoices
+        prefix: true
+        includes:
+          - is_overdue
+          - overdue_invoices
+          - overdue_amount_sum
+          - amount_paid_sum
+          - collection_rate
+
+      # -- Payment reliability ----------------------------------------------
+      - join_path: customers.charges
+        prefix: true
+        includes:
+          - failed_charges
+          - disputed_charges
+          - success_rate
+          - net_amount_sum
+
+      # -- Refund exposure ----------------------------------------------------
+      - join_path: customers.charges.refunds
+        prefix: true
+        includes:
+          - count
+          - amount_sum

@@ -1,0 +1,199 @@
+cubes:
+  - name: charges
+    sql_table: silver_marts.fct_charges
+    data_source: default
+    title: Charges
+    description: >
+      One row per charge attempt — the payments fact. Grain is the ATTEMPT,
+      not the customer or invoice, so `count` includes failed attempts;
+      filter to `status = 'succeeded'` for payment volume and use
+      `failed_charges`/`failure_code` for decline-rate analysis.
+
+      `net_amount` comes from the linked balance transaction and is what
+      actually reaches the account balance, after Stripe's processing fee —
+      distinct from `amount_captured`, which is the gross amount charged to
+      the customer.
+
+      No cube-level join to `invoices`: `customers` is the declared hub for
+      `subscriptions`, `invoices` and `charges` (see `customers.yml`), and a
+      direct charges↔invoices edge on top of that hub would create a cycle,
+      which Cube's join-path resolution rejects outright. `invoice_id`
+      remains a plain, filterable dimension here — just not a join target. To
+      relate an invoice to its charges, query each cube separately (both roll
+      up to `customers`) rather than joining them directly.
+
+      `charges` is itself the declared hub for `refunds` and `disputes` (its
+      `joins:` block below), which is why those two DO join directly to
+      `charges`.
+
+    joins:
+      - name: refunds
+        sql: "{CUBE.charge_id} = {refunds.charge_id}"
+        relationship: one_to_many
+
+      - name: disputes
+        sql: "{CUBE.charge_id} = {disputes.charge_id}"
+        relationship: one_to_many
+
+    dimensions:
+      - name: charge_id
+        sql: "{CUBE}.charge_id"
+        type: string
+        primary_key: true
+        title: Charge ID
+
+      - name: customer_id
+        sql: "{CUBE}.customer_id"
+        type: string
+        title: Customer ID
+
+      - name: invoice_id
+        sql: "{CUBE}.invoice_id"
+        type: string
+        title: Invoice ID
+        description: Null for charges not tied to an invoice (e.g. one-off PaymentIntents).
+
+      - name: payment_intent_id
+        sql: "{CUBE}.payment_intent_id"
+        type: string
+        title: Payment Intent ID
+
+      - name: status
+        sql: "{CUBE}.status"
+        type: string
+        title: Status
+        description: succeeded, pending, or failed.
+
+      - name: currency
+        sql: "{CUBE}.currency"
+        type: string
+        title: Currency
+
+      - name: is_paid
+        sql: "{CUBE}.is_paid"
+        type: boolean
+        title: Paid
+
+      - name: is_captured
+        sql: "{CUBE}.is_captured"
+        type: boolean
+        title: Captured
+
+      - name: is_refunded
+        sql: "{CUBE}.is_refunded"
+        type: boolean
+        title: Refunded
+
+      - name: is_disputed
+        sql: "{CUBE}.is_disputed"
+        type: boolean
+        title: Disputed
+
+      - name: failure_code
+        sql: "{CUBE}.failure_code"
+        type: string
+        title: Failure Code
+        description: Null unless status = failed. Machine-readable decline reason.
+
+      - name: failure_message
+        sql: "{CUBE}.failure_message"
+        type: string
+        title: Failure Message
+
+      - name: card_brand
+        sql: "{CUBE}.card_brand"
+        type: string
+        title: Card Brand
+
+      - name: card_last4
+        sql: "{CUBE}.card_last4"
+        type: string
+        title: Card Last 4
+
+      - name: created_at
+        sql: "{CUBE}.created_at"
+        type: time
+        title: Created At
+
+    measures:
+      - name: count
+        type: count
+        title: Charge Attempts
+        description: All charge attempts including failures. Use `succeeded_charges` for payment volume.
+
+      - name: succeeded_charges
+        type: count
+        filters:
+          - sql: "{CUBE}.status = 'succeeded'"
+        title: Succeeded Charges
+
+      - name: failed_charges
+        type: count
+        filters:
+          - sql: "{CUBE}.status = 'failed'"
+        title: Failed Charges
+
+      - name: disputed_charges
+        type: count
+        filters:
+          - sql: "{CUBE}.is_disputed"
+        title: Disputed Charges
+
+      - name: success_rate
+        type: number
+        sql: "1.0 * {CUBE.succeeded_charges} / NULLIF({CUBE.count}, 0)"
+        format: percent
+        title: Success Rate
+        description: Share of charge attempts that succeeded. Ranges 0–1.
+
+      - name: amount_sum
+        type: sum
+        sql: "{CUBE}.amount"
+        title: Gross Charge Volume
+        format: currency
+        description: Sum of attempted amounts, including failed and pending charges.
+
+      - name: amount_captured_sum
+        type: sum
+        sql: "{CUBE}.amount_captured"
+        title: Captured Revenue
+        format: currency
+        description: Gross amount actually captured from customers, before refunds and fees.
+
+      - name: amount_refunded_sum
+        type: sum
+        sql: "{CUBE}.amount_refunded"
+        title: Amount Refunded
+        format: currency
+
+      - name: processing_fee_sum
+        type: sum
+        sql: "{CUBE}.processing_fee"
+        title: Total Processing Fees
+        format: currency
+
+      - name: net_amount_sum
+        type: sum
+        sql: "{CUBE}.net_amount"
+        title: Net Proceeds
+        format: currency
+        description: Amount after Stripe's processing fee — what actually hit the account balance. The right figure for "how much revenue did we actually receive."
+
+    pre_aggregations:
+      # Additive volume/success rollup by day, status and card brand — the
+      # workhorse for payment-health trend questions.
+      - name: charges_by_day_status
+        measures:
+          - count
+          - succeeded_charges
+          - failed_charges
+          - amount_captured_sum
+          - net_amount_sum
+        dimensions:
+          - status
+          - card_brand
+        time_dimension: created_at
+        granularity: day
+        partition_granularity: month
+        refresh_key:
+          every: 1 hour
