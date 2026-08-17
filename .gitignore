@@ -9,3 +9,8 @@ __pycache__/
 *.py[cod]
 .cache/
 logs/
+
+# Dagster run/event storage. `dagster dev` writes here when DAGSTER_HOME is set;
+# the .tmp_ variant is what it falls back to when it isn't.
+.dagster_home/
+.tmp_dagster_home_*/

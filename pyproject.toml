@@ -4,13 +4,52 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
-# Ingestion is Airbyte-platform-side now, declared in terraform/ — the only
-# Python left is the Stripe sandbox seeder and the Cube MCP server.
+# Ingestion is Airbyte-platform-side now, declared in terraform/ — the Python
+# left is the Stripe sandbox seeder, the Cube MCP server and Dagster.
+#
+# dbt-core is pinned <1.12 because dagster-dbt 0.29.x requires it. Bumping dbt
+# past 1.12 silently breaks the dagster-dbt import, so keep the two in step.
 dependencies = [
-    "dbt-core>=1.12.2",
-    "dbt-postgres>=1.11.0",
+    "dagster>=1.13.18",
+    "dagster-airbyte>=0.29.18",
+    "dagster-dbt>=0.29.18",
+    "dagster-dg-cli>=1.13.18",
+    "dagster-webserver>=1.13.18",
+    "dbt-core>=1.11,<1.12",
+    "dbt-postgres>=1.11,<1.12",
     "httpx>=0.28.1",
     "mcp[cli]>=2.0.0",
     "python-dotenv>=1.2.2",
     "stripe>=12.0.0",
 ]
+
+# Installing the project itself (editable, via `uv sync`) is what puts the
+# `orchestration` package on the path. Without this, tools that resolve
+# definitions in a subprocess — `dg utils refresh-defs-state` in particular —
+# fail with ModuleNotFoundError even though `dagster dev` from the repo root
+# happens to work off the cwd.
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["orchestration"]
+
+# --- Dagster ---------------------------------------------------------------
+# `dagster dev` entry point. Loading is lazy (see orchestration/definitions.py),
+# so this resolves without touching Airbyte or Postgres at import time.
+[tool.dagster]
+module_name = "orchestration.definitions"
+code_location_name = "agentic_data_platform"
+
+# `dg` project layout. Every definition is a defs.yaml under orchestration/defs;
+# root_module is what makes `orchestration` importable as a package, and
+# defs_module is the folder load_from_defs_folder() walks.
+[tool.dg]
+directory_type = "project"
+
+[tool.dg.project]
+root_module = "orchestration"
+defs_module = "orchestration.defs"
+code_location_target_module = "orchestration.definitions"
+code_location_name = "agentic_data_platform"

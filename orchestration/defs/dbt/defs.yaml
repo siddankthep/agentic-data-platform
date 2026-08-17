@@ -1,0 +1,23 @@
+# dbt transformation: raw.* -> staging -> intermediate -> marts.
+#
+# The whole dbt DAG is imported from the project's manifest, so every model,
+# seed and test becomes a Dagster asset without being restated here. dbt's
+# `source()` calls resolve to the Airbyte asset keys defined in
+# ../airbyte/defs.yaml, which is what stitches ingestion and transformation
+# into one graph.
+#
+# `dbt build` (rather than `dbt run`) so tests execute alongside the models and
+# surface in Dagster as asset check results.
+type: dagster_dbt.DbtProjectComponent
+
+attributes:
+  project: "{{ project_root }}/transformation"
+  cli_args:
+    - build
+
+  translation:
+    # Data-aware scheduling: rebuild a model when its upstreams actually change,
+    # rather than on a timer that hopes the sync already finished. Combined with
+    # the cron on the Airbyte assets, one sync cascades through staging ->
+    # intermediate -> marts on its own.
+    automation_condition: "{{ dg.AutomationCondition.eager() }}"

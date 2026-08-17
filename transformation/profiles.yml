@@ -1,0 +1,27 @@
+# Connection profile for the dbt project.
+#
+# This lives in the repo rather than ~/.dbt so the project is reproducible and
+# so Dagster can run dbt without depending on machine-local state outside the
+# checkout. dbt reads profiles.yml from the project directory when
+# DBT_PROFILES_DIR is unset, so `dbt build` from transformation/ keeps working
+# exactly as before.
+#
+# Values come from the same .env the rest of the platform uses; the defaults
+# match .env.example, so a fresh clone works without exporting anything.
+transformation:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      # POSTGRES_HOST/PORT are the *host-side* coordinates. dbt runs on the host
+      # (or in the Dagster process), never inside the compose network, so this is
+      # localhost:5435 rather than postgres:5432.
+      host: "{{ env_var('POSTGRES_HOST', 'localhost') }}"
+      port: "{{ env_var('POSTGRES_PORT', '5435') | as_number }}"
+      user: "{{ env_var('POSTGRES_USER', 'cube') }}"
+      pass: "{{ env_var('POSTGRES_PASSWORD', 'cube') }}"
+      dbname: "{{ env_var('POSTGRES_DB', 'ecom') }}"
+      # Layer schemas are appended to this by the +schema configs in
+      # dbt_project.yml, giving silver_staging / silver_intermediate / silver_marts.
+      schema: silver
+      threads: 4

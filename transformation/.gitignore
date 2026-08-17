@@ -3,3 +3,6 @@ target/
 dbt_packages/
 logs/
 .env
+
+# dbt's anonymous-usage id, generated per machine.
+.user.yml

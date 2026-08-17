@@ -2,6 +2,7 @@
 export
 
 .PHONY: init up down logs psql migrate-up migrate-down migrate-create migrate-force seed reset fix-perms \
+        dagster-dev dagster-materialize dagster-dbt dagster-check dagster-refresh \
         $(INGESTION_TARGETS)
 
 COMPOSE_FILE   := docker-compose.yml
@@ -90,3 +91,52 @@ INGESTION_TARGETS := airbyte-up airbyte-down airbyte-creds airbyte-streams airby
 
 $(INGESTION_TARGETS):
 	$(MAKE) -C ingestion $@
+
+# ---------------------------------------------------------------------------
+# Dagster orchestration
+#
+# Unifies the Airbyte connection and the dbt DAG into one asset graph. Every
+# definition is a defs.yaml under orchestration/defs — see that directory.
+#
+# DAGSTER_HOME must be an absolute path and must exist, otherwise `dagster dev`
+# stores run history in a temp dir and forgets it on exit (which also means
+# declarative automation has no history to reason about).
+# ---------------------------------------------------------------------------
+
+export DAGSTER_HOME := $(CURDIR)/.dagster_home
+
+dagster-dev: $(DAGSTER_HOME)
+	uv run dagster dev
+
+# An empty dagster.yaml is Dagster's way of saying "defaults are intentional";
+# without the file it warns on every command.
+$(DAGSTER_HOME):
+	@mkdir -p $(DAGSTER_HOME)
+	@touch $(DAGSTER_HOME)/dagster.yaml
+
+# Build the whole graph once, by hand: Airbyte sync -> staging -> marts.
+# Automation normally does this (see the automation_condition in each
+# defs.yaml); this is the manual escape hatch.
+dagster-materialize: $(DAGSTER_HOME)
+	uv run dagster asset materialize --select '*' -m orchestration.definitions
+
+# dbt only — skips the Airbyte sync, so it neither hits the Stripe API nor
+# waits on a connector pod.
+dagster-dbt: $(DAGSTER_HOME)
+	uv run dagster asset materialize --select 'kind:dbt' -m orchestration.definitions
+
+# Static validation of every component: resolves each defs.yaml, builds the
+# manifest and checks asset keys line up. Fast, and the thing to run in CI.
+dagster-check:
+	uv run dg check defs
+
+# Re-pull the state each component caches under
+# orchestration/defs/.local_defs_state: the Airbyte connection catalog, and a
+# full COPY of the dbt project.
+#
+# Run this after editing dbt models or changing Airbyte streams. The copy is why
+# it is needed — Dagster runs dbt against the snapshot, not against
+# transformation/, so without a refresh you are orchestrating stale SQL and the
+# asset graph still shows models you deleted.
+dagster-refresh: $(DAGSTER_HOME)
+	uv run dg utils refresh-defs-state

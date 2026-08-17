@@ -732,12 +732,22 @@ before, now sourced from modeled marts.
 
 ### Phase 3 — Dagster unifies the graph · ~1 week
 
-- `@dbt_assets` from the manifest.
-- Airbyte syncs as assets upstream of the dbt assets (Airbyte resource, or a
-  `@asset` wrapping PyAirbyte).
-- Add `AutomationCondition.eager()` on marts; a daily partition on the facts;
-  freshness checks.
-- A downstream asset that refreshes Cube pre-aggregations.
+**Largely done — see `docs/orchestration.md`.** It landed as components rather
+than Python: two `defs.yaml` files (`dagster_airbyte.AirbyteWorkspaceComponent`,
+`dagster_dbt.DbtProjectComponent`) plus a four-line `definitions.py`, giving 21
+Airbyte assets + 34 dbt assets + 108 tests as asset checks in one graph. The
+`@dbt_assets`/manifest wiring below is what `DbtProjectComponent` does
+internally, so it is no longer worth hand-rolling.
+
+Still open:
+
+- A daily partition on the facts, and freshness checks.
+- A downstream asset that refreshes Cube pre-aggregations — the last hop that
+  would make the graph reach all the way to the semantic layer.
+
+Already in place: Airbyte assets upstream of dbt (joined by asset key, see the
+"asset key contract" section of the orchestration doc), `on_cron` on ingestion
+and `AutomationCondition.eager()` on every dbt model.
 
 **Checkpoint:** one `dagster dev` UI shows source → raw → staging → marts →
 Cube as a single lineage graph, and changing a source triggers exactly the

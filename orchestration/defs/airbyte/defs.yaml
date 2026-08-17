@@ -1,0 +1,37 @@
+# Airbyte ingestion: Stripe -> raw.* in Postgres.
+#
+# The connection itself is declared in ingestion/terraform/connection.tf; this
+# file only makes its streams visible to Dagster as assets. Materializing one
+# triggers a sync of the whole connection (Airbyte's unit of work is the
+# connection, not the stream).
+#
+# This is OSS Airbyte running in abctl's kind cluster, not Airbyte Cloud, hence
+# the explicit *_base_url pointing at localhost:8000. Credentials come from .env
+# via `make airbyte-creds` — Dagster loads .env from the project root on startup.
+type: dagster_airbyte.AirbyteWorkspaceComponent
+
+attributes:
+  workspace:
+    rest_api_base_url: http://localhost:8000/api/public/v1
+    configuration_api_base_url: http://localhost:8000/api/v1
+    workspace_id: "{{ env.AIRBYTE_WORKSPACE_ID }}"
+    client_id: "{{ env.AIRBYTE_CLIENT_ID }}"
+    client_secret: "{{ env.AIRBYTE_CLIENT_SECRET }}"
+
+  connection_selector:
+    by_name:
+      - "Stripe -> Postgres (raw)"
+
+  # The asset key MUST match the dbt source key, or the graph silently splits in
+  # two: Airbyte assets on one side, dbt models with phantom upstreams on the
+  # other. dbt keys a source as [source_name, table_name] — `stripe` is the
+  # source name in transformation/models/staging/stripe/_stripe__sources.yml —
+  # so Airbyte's default single-segment key is remapped to match here.
+  translation:
+    key: "stripe/{{ props.stream_name }}"
+    group_name: raw_stripe
+    # Dagster owns the schedule, not Airbyte. The connection in terraform/ is
+    # deliberately `manual` so there is exactly one place a sync can be
+    # triggered from — here. Everything downstream is eager, so this cron is
+    # the single clock for the whole platform.
+    automation_condition: "{{ dg.AutomationCondition.on_cron('0 6 * * *') }}"
