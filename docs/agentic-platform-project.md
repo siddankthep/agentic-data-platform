@@ -85,8 +85,43 @@ and watch the agent do roughly this:
    asks Dagster to materialize the affected assets, then re-answers.
 
 That loop — **discover → understand semantics → query safely → explain
-provenance → repair staleness** — is the actual deliverable. The pipelines
-underneath are the substrate that makes it possible.
+provenance → repair staleness** — is the *read* path. It is the easiest of the
+three deliverables and the least interesting one, because the agent only
+consumes context that a human already curated.
+
+### The two agent roles — the actual end goal
+
+The deliverable this project is judged on is the **write** path: an agent that
+*produces* the governed context, not one that merely reads it. Two roles, in
+order:
+
+**1. The curation agent — replaces the Data Steward.** Given (a) a domain's
+technical metadata already ingested into OpenMetadata and (b) a Markdown brief
+describing the tables, columns and use cases in business prose, the agent
+creates the glossary, terms, classifications, domain and asset links inside
+OpenMetadata. The semantic layer stops being hand-maintained documentation and
+becomes an artifact an agent curates and keeps in sync. → **Phase 5**
+
+**2. The generation agent — replaces the Data Engineer.** Given (a) that
+governed semantic metadata and (b) a use-case goal in one sentence, the agent
+generates the medallion pipeline that answers it: dbt staging → intermediate →
+marts, Cube cubes and a consumer-facing view, and the Dagster wiring — with
+minimal human interaction and a build-verify loop that proves the output is
+correct rather than merely plausible. → **Phase 6**
+
+The read loop above then becomes the **acceptance test** for both: if an analyst
+agent can answer a business question through metadata and marts that no human
+wrote, the two roles were genuinely automated. → **Phase 7**
+
+The pipelines underneath are the substrate that makes all three possible.
+
+Note the deliberate asymmetry already sitting in this repo, because it is what
+makes the demo measurable: **Stripe is modeled by hand** (21 staging models, 11
+marts, 11 cubes, 2 views, written by a human with grain warnings and prose
+descriptions). **Olist is nine raw tables in the same warehouse with no dbt
+models, no cubes and no glossary.** Stripe is the golden reference; Olist is the
+greenfield the agent builds. Same warehouse, same tooling, same reviewer — one
+built by a person, one by an agent, scored against each other.
 
 ### Why this is a good learning project
 
@@ -783,9 +818,322 @@ lineage UI, and an MCP client can answer "who owns this and is it fresh?"
 **Read:** OpenMetadata — Metadata Standard / core schema; MCP docs;
 `openmetadatastandards.org/rdf/overview`.
 
+#### What Phases 5 and 6 specifically need out of this phase
+
+The list above is the full OpenMetadata tour. These four items are the ones that
+*block* the two agent phases, in priority order — everything else in Phase 4 can
+slip:
+
+1. **dbt ingestion (step 3).** Highest priority and currently missing.
+   `orchestration/defs/openmetadata/definitions.py` ingests the Postgres schema
+   only, so OpenMetadata knows `silver_marts.fct_subscriptions` exists as a
+   table but not that a dbt model produces it, what its columns mean, or which
+   tests guard it. Phase 5's agent has nothing meaningful to attach terms to
+   until dbt descriptions, tests and model lineage land as entities.
+2. **A bot account with write scope, and its RBAC boundary decided.** Phase 5's
+   agent writes to the catalog. OpenMetadata tokens inherit the creator's RBAC,
+   which is the whole argument for going through the catalog — so give the
+   curation agent its own bot, not the ingestion bot's token, and scope it to
+   the domains it is allowed to touch.
+3. **Olist through Airbyte (Phase 1's `source-postgres` path).** Olist is
+   currently loaded by `db/seed.sql` straight into the warehouse, so it has no
+   `raw` layer. Phase 6's agent is supposed to build `raw → staging →
+   intermediate → marts`; without a real raw schema its staging models are
+   modeling a seed script, and the medallion story is a fiction. This is the one
+   Phase 1 item that is genuinely load-bearing for the demo.
+4. **Airbyte + Dagster connectors (step 4).** Needed for the end-to-end lineage
+   claim in Phase 6's acceptance criteria, not for the agent to function.
+
+Steps 5–7 (hand-building a glossary, SPARQL, the MCP server) are still worth
+doing — but note that **step 5 is the task Phase 5 automates.** Build the Stripe
+glossary by hand anyway: it is the reference implementation the agent's Olist
+glossary gets scored against, and writing it by hand is how you learn which API
+calls the agent's tools need to wrap.
+
 ---
 
-### Phase 5 — The pi agent · ~1.5 weeks
+### Phase 5 — The curation agent (replaces the Data Steward) · ~1.5 weeks
+
+**Goal:** `pi --agent data-steward` reads a Markdown domain brief plus the
+technical metadata already in OpenMetadata, and produces the domain, glossary,
+terms, classifications and asset links — reviewed by a human as a diff, not
+typed by one.
+
+#### The input contract: `domains/<domain>.md`
+
+This file is the crux of the whole phase, and the temptation is to over-specify
+it. **Resist making it machine-readable.** If the brief is structured enough to
+be compiled, the agent is a YAML transpiler and the demo proves nothing. The
+point is that a domain expert writes *prose* about their business and the agent
+does the modeling work.
+
+So: prescribed sections, free prose inside them.
+
+```markdown
+---
+domain: Marketplace Orders
+owner: marketplace-analytics
+source_service: warehouse-postgres
+---
+
+## What this domain is for
+Two-sided marketplace: customers place orders, sellers fulfil them, couriers
+deliver them. The questions we need to answer are about delivery reliability and
+which sellers and categories drive it.
+
+## Tables
+`olist_orders_dataset` — one row per order. Five timestamp columns; the one that
+means "when the customer bought" is `order_purchase_timestamp`, the rest are
+fulfilment milestones. `order_estimated_delivery_date` is the promise made at
+checkout, not a prediction.
+
+`olist_order_items_dataset` — one row per *item*, not per order. An order with
+three items is three rows. Revenue lives here.
+...
+
+## Business vocabulary
+**Delivery SLA** — an order meets its SLA when it reaches the customer on or
+before `order_estimated_delivery_date`. Measured at order grain, never item
+grain.
+
+**Active Seller** — a seller with at least one order in the trailing 90 days.
+...
+
+## Sensitivity
+Customer zip prefixes and city are personal data under our policy. Seller
+identifiers are not.
+```
+
+Two things make this format work rather than being decoration:
+
+- **Grain statements live in the vocabulary section.** "Measured at order grain,
+  never item grain" is the single most valuable sentence in the file, because it
+  becomes a GlossaryTerm description, which Phase 6 then reads back when
+  choosing a mart's grain, which becomes a dbt uniqueness test. Trace that
+  chain — it is how a prose sentence turns into an executable assertion. The
+  hand-written Stripe cubes already do this (see the `GRAIN WARNING` block in
+  `cube_semantics/model/views/revenue_overview.yml`); the brief is where that
+  knowledge enters the system instead of being retrofitted at the end.
+- **The brief never names an OpenMetadata entity type.** No "create a
+  GlossaryTerm called X". The mapping from business prose to catalog entities is
+  the agent's job, and it is the part being demonstrated.
+
+#### What the agent writes
+
+| OpenMetadata entity | Sourced from |
+|---|---|
+| `Domain` | frontmatter |
+| `Glossary` + `GlossaryTerm` (with `synonyms`, hierarchy via `parent`) | the vocabulary section |
+| Term → column links | the agent matching term definitions against ingested columns |
+| `Classification` tags (`PII.Sensitive`) on columns | the sensitivity section |
+| Table and column `description` patches | the tables section + inference from names/types |
+| `DataProduct` (optional) | the use-cases section |
+
+#### Tools
+
+OpenMetadata's MCP server is search/lineage-shaped — it is a read surface. Writes
+go through the REST API, so this phase is a **native pi extension**, not MCP.
+Keep the tools small and boring:
+
+```
+om_search_assets(query, limit)          om_create_glossary(name, description)
+om_get_table(fqn)                       om_create_term(glossary, name, description,
+om_patch_description(type, fqn, text)                   synonyms, parent)
+om_apply_tag(fqn, column, tag_fqn)      om_link_term(term_fqn, asset_fqn, column?)
+om_create_domain(name, description)     om_assign_domain(fqn, domain)
+```
+
+Four rules, each of which is the difference between a demo and a liability:
+
+1. **Idempotent by FQN.** Every write is create-or-update keyed on the fully
+   qualified name — `PUT`, never blind `POST`. Re-running the agent against an
+   unchanged brief must produce zero writes. This is also the most convincing
+   thing you can show a governance audience.
+2. **Bounded output.** `om_search_assets` over a real catalog returns megabytes.
+   Cap it — the same lesson OpenMetadata learned capping their own
+   `search_metadata` (§6.5).
+3. **Errors are prompt.** OpenMetadata validates writes against JSON Schema and
+   SHACL shapes and rejects bad metadata with a specific message. Surface that
+   message verbatim in the tool result and the agent self-corrects in one turn.
+   Do not swallow it into "write failed".
+4. **Dry-run is the default.** `--plan` renders the intended writes as a Markdown
+   diff and exits; `--apply` executes. The steward role is not deleted, it is
+   inverted: the human stops typing and starts reviewing.
+
+#### Acceptance criteria
+
+- Every term in the brief's vocabulary section exists as a `GlossaryTerm` and is
+  linked to at least one column. **No orphan terms.**
+- Every column the brief discusses carries a description; every column flagged
+  sensitive carries the classification.
+- **Idempotency:** second run on an unchanged brief → zero writes.
+- **Convergence:** edit one definition in the brief, re-run → exactly one term
+  updated, nothing else touched.
+- A reviewer shown the agent's Olist glossary and the hand-written Stripe
+  glossary side by side cannot reliably say which is which.
+
+#### Eval
+
+Fifteen to twenty assertions run headless (`pi -p --json`) against a freshly
+reset OpenMetadata: term exists, term linked to the *right* column, PII applied
+to exactly the right set, no orphans, idempotent re-run. Structural assertions
+first — they are cheap, deterministic, and catch most regressions.
+
+For description *quality*, use an LLM judge in a separate session, given the
+hand-written Stripe glossary as the reference standard and a rubric (does it
+state grain? does it warn about the obvious wrong join? is it written for a
+machine reader?). Never let the authoring session grade its own output.
+
+---
+
+### Phase 6 — The generation agent (replaces the Data Engineer) · ~2 weeks
+
+**Goal:** `pi --agent data-engineer` takes the governed metadata from Phase 5
+plus one sentence of business intent, and produces a working medallion pipeline.
+
+> *"I need to see which sellers are missing the delivery SLA, broken down by
+> state and product category, month over month."*
+
+#### Why this is a loop, not a code generator
+
+A one-shot template that emits dbt models from a schema is a solved, boring
+problem and it produces plausible-looking wrong SQL. What makes this an agent is
+that **every stage produces a machine-checkable signal the agent must react to**:
+
+```
+  1 PLAN        read OM: tables, grains, glossary terms behind "Delivery SLA"
+                → emit target marts + declared grain + measures   ← human approves, once
+  2 SCAFFOLD    write stg_* / int_* / dim_*+fct_* / schema.yml
+  3 BUILD       dbt build            → compile + test failures are the signal
+  4 SEMANTICS   write cubes + a view, joins with declared cardinality
+  5 VERIFY      cube run_query vs an independently-written SQL query
+  6 REGISTER    re-run OM ingestion; link new mart columns back to the terms used
+```
+
+Step 6 is what closes the circle and is worth stating plainly: **Phase 5's
+output is Phase 6's input, and Phase 6's output flows back into Phase 5's
+catalog.** The semantic layer is not a static document the agents consult — it
+is a shared artifact they both maintain.
+
+#### Grain is the whole difficulty
+
+Everything else here is mechanical. Grain is where LLMs writing warehouse SQL
+actually fail — `fct_order_items` at item grain versus `fct_orders` at order
+grain, and revenue silently double-counted across the join. Three defences,
+stacked:
+
+1. **The glossary carries grain in prose.** "Measured at order grain, never item
+   grain" came from the brief in Phase 5 and the agent reads it in step 1.
+2. **The plan declares grain explicitly.** Step 1's output must name each mart's
+   grain key. This is the thing the human approves.
+3. **The declared grain becomes a test.** Every mart gets a `unique` test on its
+   declared grain key, generated in step 2 and executed in step 3. A grain
+   mistake is now a red `dbt build`, not a wrong number nobody notices.
+
+That is the entire architectural argument of this project compressed into one
+mechanism: prose → governed metadata → generated code → executable assertion.
+
+#### Tools
+
+pi already ships `read`/`write`/`edit`/`bash`/`grep`/`find`, which is all the
+*authoring* capability needed. **Do not build a `generate_dbt_model` tool** — a
+tool that writes the model for the agent makes the agent worse, not better
+(§7, "custom tools vs MCP"). The new tools are all *feedback*:
+
+| Tool | Returns |
+|---|---|
+| `dbt_build(select)` / `dbt_test(select)` | structured failures, bounded — not 4000 lines of log |
+| `cube_validate()` | Cube schema compile errors |
+| `describe_semantics` / `run_query` / `explain_query` | existing MCP server, unchanged |
+| `dagster_materialize(assets)` / `check_asset_freshness(asset)` | Dagster GraphQL |
+| the Phase 5 OpenMetadata read tools | glossary terms, table schemas, lineage |
+
+Dagster needs almost no new work: `DbtProjectComponent` builds assets from
+`manifest.json`, so new dbt models become Dagster assets automatically the moment
+they compile. The only genuinely new Dagster asset is the Cube pre-aggregation
+refresh that Phase 3 left open — and generating pre-aggregations is out of scope
+for v1. Say so rather than discovering it mid-demo.
+
+#### "Minimal user interaction" needs a number
+
+Otherwise it is unfalsifiable. Define the interaction budget and log every human
+turn:
+
+- **1** goal statement
+- **1** approval of the step-1 plan
+- **0** corrections
+
+Three human turns total, ≤ 2 of them substantive. That number is the demo metric;
+publish it in the eval output.
+
+#### Acceptance criteria
+
+- `dbt build` green, including the grain uniqueness test on every declared mart.
+- A Cube query against the generated view answers the original goal, and the
+  number matches an independently hand-written SQL query.
+- Dagster shows raw → staging → intermediate → marts as one graph with correct
+  upstream edges, and no phantom dependencies.
+- OpenMetadata shows column-level lineage from the raw Olist tables to the new
+  marts, and the new mart columns carry the glossary terms the agent used.
+- Human turns ≤ 3.
+- **The comparison:** the same reviewer scores the agent's Olist marts and cubes
+  and the hand-written Stripe ones against one rubric. Parity is the claim.
+
+#### Where it will fail — plan for these
+
+- **Grain**, as above. Mitigated, not eliminated.
+- **Olist has no incremental cursor.** It is a static CSV load, so schema drift
+  and STATE — the interesting halves of the ingestion story — do not exercise.
+  Phase 4 prerequisite #3 fixes the raw layer, not this.
+- **Cube pre-aggregations and join-path tuning** are performance work with weak
+  feedback signals. Out of scope for the agent; keep them hand-written.
+- **Context bloat.** An unbounded `om_search_assets` or a raw `dbt build` log
+  will eat the window mid-run. This is why every tool above is described as
+  bounded.
+
+#### Model and harness notes
+
+pi speaks 15+ providers with mid-session switching, so the model is a config
+choice — pin it in the package and record it in every eval result, because model
+version is an experimental variable.
+
+Default to **Claude Opus 5** (`claude-opus-5`) for both agents; the Phase 6
+build-verify loop is exactly the long-horizon agentic work it is strongest at.
+Run the generation agent at `effort: xhigh` and the curation agent at `high`.
+Three prompting notes that matter specifically here:
+
+- **Give the complete task spec in the first turn.** Long-horizon performance is
+  best with one well-specified opening turn rather than intent dribbled across
+  several — which happens to be the same thing as the minimal-interaction goal.
+  The interaction budget and the quality ceiling point the same direction.
+- **Do not write "double-check your work" into the prompt.** Recent models
+  verify unprompted and the instruction causes over-verification. Keep the
+  *executable* verification (dbt tests, the Cube-versus-SQL comparison); drop the
+  prose kind.
+- **Cap subagent delegation explicitly.** Left alone the agent will spawn
+  subagents for work it could do in three tool calls, multiplying cost and
+  latency for no gain.
+
+#### Eval
+
+The Phase 5 eval checks structure. This one checks *behaviour*, so it has to
+actually run the pipeline: reset the warehouse, hand the agent a goal, let it
+build, then assert on the artifacts and the numbers. Run three or four distinct
+goals against the same Olist domain — an SLA question, a revenue-by-category
+question, a repeat-customer question — because a single golden path proves
+nothing about generalisation. Score: build green, numbers match, human turns
+used, and a judge's rubric score on the generated `schema.yml` descriptions and
+Cube `description:` prose.
+
+---
+
+### Phase 7 — The analyst agent (the read path) · ~1.5 weeks
+
+**Downstream of Phases 5 and 6, and the acceptance test for both.** Everything
+this agent reads — glossary terms, classifications, marts, cubes — was produced
+by the two write agents. Point it at the Olist domain specifically: if it can
+answer a business question over metadata and models that no human authored, the
+two roles were automated for real.
 
 Build `pi-data-platform` as a proper pi package.
 
@@ -812,7 +1160,7 @@ detour where the agent triggers Dagster and re-answers.
 
 ---
 
-### Phase 6 — Polish · ~1 week
+### Phase 8 — Polish · ~1 week
 
 - One `docker-compose.yml` (or Makefile targets) that stands the whole platform
   up from cold.
@@ -840,7 +1188,21 @@ detour where the agent triggers Dagster and re-answers.
   `search_metadata`. An unbounded catalog search will eat the context window.
 - **Write descriptions as you go.** dbt `schema.yml`, Cube `description:`,
   OpenMetadata glossary. Retrofitting documentation for 40 models is the task
-  that kills the project in week six. Every description is agent capability.
+  that kills the project in week six. Every description is agent capability —
+  and for Stripe specifically, it is the reference standard Phase 5's agent
+  gets graded against, so hand-writing it is not wasted work.
+- **An agent with write access to the catalog is a different risk class.**
+  Phases 5 and 6 hand an agent credentials that mutate governance metadata and
+  the transformation repo. Three non-negotiables: every catalog write is
+  idempotent and keyed by FQN (a non-idempotent retry duplicates your glossary),
+  dry-run-then-apply is the default rather than an option, and the agent gets
+  its own bot with its own RBAC scope instead of borrowing the ingestion bot's
+  token. Demo the second run producing zero writes — that is the thing a
+  governance audience actually wants to see.
+- **Keep the golden domain hand-built.** The moment you let an agent "improve"
+  the Stripe models, you have lost the control group and every comparison in
+  Phases 5–7 becomes unfalsifiable. Stripe is written by a human, Olist by the
+  agent, and that boundary does not move.
 
 ---
 
