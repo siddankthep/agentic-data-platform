@@ -1,7 +1,7 @@
 -include .env
 export
 
-.PHONY: init up down logs psql migrate-up migrate-down migrate-create migrate-force seed reset fix-perms \
+.PHONY: init up down logs psql migrate-up migrate-down migrate-create migrate-force reset fix-perms \
         dagster-dev dagster-materialize dagster-dbt dagster-check dagster-refresh \
         $(INGESTION_TARGETS)
 
@@ -20,14 +20,14 @@ POSTGRES_HOST     ?= localhost
 POSTGRES_PORT     ?= 5432
 POSTGRES_USER     ?= cube
 POSTGRES_PASSWORD ?= cube
-POSTGRES_DB       ?= olist
+POSTGRES_DB       ?= ecom
 
 DATABASE_URL := postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):$(POSTGRES_PORT)/$(POSTGRES_DB)?sslmode=disable
 
 init:
 	go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@v4.18.2
 	cp -n .env.example .env 2>/dev/null || true
-	@echo "Setup complete! Run 'make up && make migrate-up && make seed'."
+	@echo "Setup complete! Run 'make up && make migrate-up', then 'make sync' to land Stripe data."
 
 up:
 	$(COMPOSE) up -d
@@ -62,19 +62,14 @@ migrate-force:
 	@if [ -z "$(version)" ]; then echo "Usage: make migrate-force version=<n>"; exit 1; fi
 	migrate -path "$(MIGRATIONS_DIR)" -database "$(DATABASE_URL)" force $(version)
 
-# Server-side COPY from db/seed/*.csv, which the postgres container sees at /db.
-seed:
-	@echo "Seeding from db/seed..."
-	$(COMPOSE) exec -T postgres \
-		psql -v ON_ERROR_STOP=1 -U $(POSTGRES_USER) -d $(POSTGRES_DB) -f /db/seed.sql
-
-# Blow away the volume and rebuild from scratch.
+# Blow away the volume and rebuild from scratch. Provisions schemas only; run
+# `make sync` afterwards to land Stripe data into `raw` via Airbyte.
 reset:
 	$(COMPOSE) down -v
 	$(MAKE) up
 	@until $(COMPOSE) exec -T postgres pg_isready -U $(POSTGRES_USER) -d $(POSTGRES_DB) >/dev/null 2>&1; do sleep 1; done
 	$(MAKE) migrate-up
-	$(MAKE) seed
+	@echo "Schemas ready. Run 'make sync' to land Stripe data via Airbyte."
 
 # ---------------------------------------------------------------------------
 # Airbyte ingestion — delegated to ingestion/Makefile

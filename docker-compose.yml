@@ -25,6 +25,12 @@ services:
 
   postgres:
     image: postgres:18
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_preload_libraries=pg_stat_statements"
+      - "-c"
+      - "pg_stat_statements.track=all"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-cube}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cube}
@@ -33,8 +39,6 @@ services:
       - ${POSTGRES_PORT:-5435}:5432
     volumes:
       - pgdata:/var/lib/postgresql
-      # Read by the server-side COPY statements in db/seed.sql (`make seed`).
-      - ./db:/db:ro
     healthcheck:
       test:
         - CMD-SHELL
