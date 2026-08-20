@@ -1,0 +1,29 @@
+# TEMPLATE — copy to `<source>/_<source>__sources.yml` and fill in.
+#
+# `.yml.example` is ignored by dbt; only `.yml`/`.sql` under model-paths load.
+# This declares the `raw` tables Airbyte landed so `source('<name>', '<table>')`
+# resolves in staging models.
+#
+# CRITICAL: the source `name` here is also the Airbyte asset-key prefix. It must
+# equal AIRBYTE_SOURCE_NAME in .env (which orchestration/defs/airbyte/defs.yaml
+# uses as its translation key `{{ env.AIRBYTE_SOURCE_NAME }}/<stream>`), or the
+# Dagster graph silently splits into disconnected Airbyte and dbt islands. See
+# docs/orchestration.md, "The asset key contract".
+#
+# `make example-stripe` installs a worked version
+# (examples/stripe/.../staging/stripe/_stripe__sources.yml).
+
+# version: 2
+#
+# sources:
+#   - name: my_source            # == AIRBYTE_SOURCE_NAME
+#     description: >
+#       Raw objects landed verbatim by Airbyte. Never queried by BI/Cube —
+#       staging models are the only consumers.
+#     database: ecom
+#     schema: raw
+#     loader: airbyte
+#     loaded_at_field: _airbyte_extracted_at
+#     tables:
+#       - name: table_a
+#       - name: table_b

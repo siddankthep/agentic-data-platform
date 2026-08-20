@@ -3,6 +3,7 @@ export
 
 .PHONY: init up down logs psql migrate-up migrate-down migrate-create migrate-force reset fix-perms \
         dagster-dev dagster-materialize dagster-dbt dagster-check dagster-refresh \
+        example-stripe example-clean \
         $(INGESTION_TARGETS)
 
 COMPOSE_FILE   := docker-compose.yml
@@ -27,7 +28,7 @@ DATABASE_URL := postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST
 init:
 	go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@v4.18.2
 	cp -n .env.example .env 2>/dev/null || true
-	@echo "Setup complete! Run 'make up && make migrate-up', then 'make sync' to land Stripe data."
+	@echo "Setup complete! Run 'make up && make migrate-up'. To try the reference: 'make example-stripe' then 'make sync'."
 
 up:
 	$(COMPOSE) up -d
@@ -62,23 +63,38 @@ migrate-force:
 	@if [ -z "$(version)" ]; then echo "Usage: make migrate-force version=<n>"; exit 1; fi
 	migrate -path "$(MIGRATIONS_DIR)" -database "$(DATABASE_URL)" force $(version)
 
-# Blow away the volume and rebuild from scratch. Provisions schemas only; run
-# `make sync` afterwards to land Stripe data into `raw` via Airbyte.
+# Blow away the volume and rebuild from scratch. Provisions schemas only; then
+# install a source (e.g. `make example-stripe`) and `make sync` to land data.
 reset:
 	$(COMPOSE) down -v
 	$(MAKE) up
 	@until $(COMPOSE) exec -T postgres pg_isready -U $(POSTGRES_USER) -d $(POSTGRES_DB) >/dev/null 2>&1; do sleep 1; done
 	$(MAKE) migrate-up
-	@echo "Schemas ready. Run 'make sync' to land Stripe data via Airbyte."
+	@echo "Schemas ready. Install a source (e.g. 'make example-stripe') then 'make sync'."
+
+# ---------------------------------------------------------------------------
+# Examples — removable reference implementations under examples/
+#
+# The scaffold ships empty. `make example-stripe` copies the hand-built Stripe
+# pipeline (dbt models, cubes/views, Terraform source+connection, seed script)
+# into the working directories; `make example-clean` removes exactly those files
+# again, restoring the empty scaffold. Run `make dagster-refresh` after either.
+# ---------------------------------------------------------------------------
+
+example-stripe:
+	scripts/example.sh install stripe
+
+example-clean:
+	scripts/example.sh clean stripe
 
 # ---------------------------------------------------------------------------
 # Airbyte ingestion — delegated to ingestion/Makefile
 #
 # Airbyte itself runs in a kind cluster managed by abctl, entirely outside this
-# compose project. Terraform owns everything *inside* it: the Stripe source, the
-# Postgres destination and the connection between them. See ingestion/Makefile
-# for the actual recipes; this just forwards so `make sync` etc. still work
-# from the repo root.
+# compose project. Terraform owns everything *inside* it: the source, the
+# destination warehouse and the connection between them (the source + connection
+# come from an installed example or your own tf). See ingestion/Makefile for the
+# actual recipes; this just forwards so `make sync` etc. still work from the root.
 # ---------------------------------------------------------------------------
 
 INGESTION_TARGETS := airbyte-up airbyte-down airbyte-creds airbyte-streams airbyte-versions \

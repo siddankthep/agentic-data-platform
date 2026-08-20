@@ -104,9 +104,9 @@ Terraform targets (`tf-plan`, `tf-apply`, `sync`) as needed — see the
 - [docs/orchestration.md](docs/orchestration.md) — how Airbyte and dbt become one
   Dagster asset graph.
 - [docs/mcp-cube-guide.md](docs/mcp-cube-guide.md) — building the Cube MCP server.
-- [docs/stripe-data-model.md](docs/stripe-data-model.md) and
-  [docs/analytical-queries-guide.md](docs/analytical-queries-guide.md) — the
-  Stripe example's models and queries (example-specific).
+- [examples/stripe/README.md](examples/stripe/README.md) — the Stripe worked
+  example, and how to install/remove it. Its
+  [docs/](examples/stripe/docs/) hold the Stripe data model and example queries.
 
 ## Roadmap
 

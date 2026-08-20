@@ -1,27 +1,41 @@
 # Airbyte ingestion, as code
 
-Terraform owns the Stripe → Postgres pipeline running inside the local Airbyte
+Terraform owns the source → destination pipeline running inside the local Airbyte
 install. Nothing here provisions Airbyte itself — `abctl` does that — but every
 object *within* Airbyte is declared in this directory rather than clicked
 together in the UI.
 
+The scaffold declares only the **destination warehouse**. A **source** and the
+**connection** are installed on top of it — either the Stripe example
+(`make example-stripe`, which drops `source_stripe.tf` / `connection.tf` /
+`variables_stripe.tf` / `outputs_stripe.tf` in here) or your own, written against
+the `.example` templates below.
+
 | File | What it declares |
 | --- | --- |
 | `providers.tf` | Airbyte API endpoint and OAuth2 credentials |
-| `source_stripe.tf` | The Stripe source, pinned to connector 6.0.13 |
+| `versions.tf` | Terraform + provider version constraints |
+| `variables.tf` | Generic Airbyte, destination and connection variables |
 | `destination_postgres.tf` | The Postgres destination, pinned to connector 3.0.16 |
-| `connection.tf` | The connection, its 21 selected streams and its schedule |
+| `outputs.tf` | `destination_id` (source/connection outputs come with the source) |
+| `source.tf.example` | Template: how to declare a source connector |
+| `connection.tf.example` | Template: how to wire source → destination and pick streams |
 
-## First run
+## First run (with the Stripe example)
 
 ```bash
 make airbyte-up       # abctl local install, if Airbyte isn't running yet
 make airbyte-creds    # write AIRBYTE_* credentials into .env
 make up               # the compose Postgres the destination writes to
+make example-stripe   # install the Stripe source + connection into this dir
 make tf-init
 make tf-apply
 make sync             # trigger a run and follow it
 ```
+
+Bringing your own source? Copy `source.tf.example` → `source.tf` and
+`connection.tf.example` → `connection.tf`, fill them in, add the source's
+variables, and set `AIRBYTE_SOURCE_NAME` / `AIRBYTE_CONNECTION_NAME` in `.env`.
 
 ## Provider notes
 
@@ -56,23 +70,24 @@ and `postgres_port` is the *host-published* port from `.env` (5435), not the
 
 ## Changing what is replicated
 
-`local.stripe_streams` in `connection.tf` selects 21 of the connector's 47
-streams. Check a name against the live catalog before adding it — an unknown
-stream fails at apply:
+The connection's `local.streams` list (in the installed `connection.tf`) selects
+which streams sync. Check a name against the live catalog before adding it — an
+unknown stream fails at apply:
 
 ```bash
 make airbyte-streams
 ```
 
-Every selected stream has a source-defined cursor and primary key, so
-`incremental_deduped_history` needs no explicit `cursor_field` or `primary_key`;
-the destination keeps one row per Stripe object id.
+A stream with a source-defined cursor and primary key needs no explicit
+`cursor_field` / `primary_key` under `incremental_deduped_history`; the
+destination keeps one row per object id. (The Stripe example selects 21 of the
+connector's 47 streams — see `examples/stripe/terraform/connection.tf`.)
 
 ## Connector upgrades
 
-`connector_version` is pinned in both `source_stripe.tf` and
-`destination_postgres.tf` so plan-time validation matches what actually runs.
-When you upgrade a connector in Airbyte, bump the matching `local` value:
+`connector_version` is pinned in each connector's `.tf` so plan-time validation
+matches what actually runs. When you upgrade a connector in Airbyte, bump the
+matching `local` value:
 
 ```bash
 make airbyte-versions
@@ -80,7 +95,7 @@ make airbyte-versions
 
 ## State
 
-State is local and gitignored — it contains the Stripe key and the Postgres
+State is local and gitignored — it contains connector secrets and the Postgres
 password in cleartext. The `.terraform.lock.hcl` provider lock *is* tracked. If
 this ever becomes more than a local project, move state to a remote backend
 before sharing it.

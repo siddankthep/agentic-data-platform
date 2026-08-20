@@ -3,6 +3,11 @@
 How Airbyte and dbt become one Dagster asset graph, and what you have to know
 to operate it. Read this before touching `orchestration/`.
 
+> The concrete asset counts and stream/source names below describe the graph with
+> the **Stripe example installed** (`make example-stripe`). On the empty scaffold
+> both components contribute zero assets; the wiring — the asset-key contract, the
+> automation conditions — is identical whatever source is installed.
+
 ## Data flow
 
 ```
@@ -20,7 +25,7 @@ intermediate/int_stripe__*│  34 Dagster assets + 108 dbt tests as asset checks
 marts/{dim,fct}_*        ─┘
    │
    ▼
-silver_marts.*           What Cube reads (see stripe-data-model.md).
+silver_marts.*           What Cube reads (see examples/stripe/docs/stripe-data-model.md).
 ```
 
 Two YAML files define all of it:
@@ -38,16 +43,20 @@ YAML, not Python.
 
 This is the single thing that makes it one graph rather than two:
 
-- dbt keys a source as `[source_name, table_name]` → `stripe/customers`.
-  `stripe` is the source name in `_stripe__sources.yml`.
+- dbt keys a source as `[source_name, table_name]` → e.g. `stripe/customers`.
+  The source name comes from the `_<source>__sources.yml` `name:` field.
 - Airbyte's default key is just the stream name → `customers`.
 
-So `airbyte/defs.yaml` remaps it:
+So `airbyte/defs.yaml` remaps it, reading the source name from `.env` so the same
+component works whatever source is installed:
 
 ```yaml
 translation:
-  key: "stripe/{{ props.stream_name }}"
+  key: "{{ env.AIRBYTE_SOURCE_NAME }}/{{ props.stream_name }}"
 ```
+
+`AIRBYTE_SOURCE_NAME` **must** equal the dbt source `name:` (the Stripe example
+sets both to `stripe`).
 
 Get this wrong and nothing errors. You get two disconnected islands: Airbyte
 assets nobody depends on, and dbt models with upstreams that never materialize.

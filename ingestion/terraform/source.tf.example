@@ -1,0 +1,35 @@
+# TEMPLATE — copy to `source.tf` and fill in for your own source.
+#
+# `.tf.example` is ignored by Terraform; only `.tf` files are loaded. This is the
+# contract a source has to satisfy to plug into the scaffold. `make example-stripe`
+# installs a real, worked version of this (examples/stripe/terraform/source_stripe.tf).
+#
+# The pattern: resolve the connector to its definition_id and validate the config
+# against the connector's own JSONSchema at plan time, so a bad key fails before
+# anything is created in Airbyte. Put the source's variables in their own
+# variables file (see examples/stripe/terraform/variables_stripe.tf).
+
+# locals {
+#   my_connector_version = "x.y.z" # `make airbyte-versions` to see what this install runs
+# }
+#
+# data "airbyte_connector_configuration" "source" {
+#   connector_name     = "source-postgres" # or source-snowflake, source-stripe, ...
+#   connector_version  = local.my_connector_version
+#   connector_registry = "oss"
+#
+#   configuration = {
+#     # non-secret connector config keys go here
+#   }
+#
+#   configuration_secrets = {
+#     # secret keys (passwords, API keys) go here so they stay redacted in plan output
+#   }
+# }
+#
+# resource "airbyte_source" "source" {
+#   name          = "My Source"
+#   workspace_id  = var.airbyte_workspace_id
+#   definition_id = data.airbyte_connector_configuration.source.definition_id
+#   configuration = data.airbyte_connector_configuration.source.configuration_json
+# }

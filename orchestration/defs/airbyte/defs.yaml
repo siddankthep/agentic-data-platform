@@ -1,9 +1,14 @@
-# Airbyte ingestion: Stripe -> raw.* in Postgres.
+# Airbyte ingestion: your source -> raw.* in the destination warehouse.
 #
-# The connection itself is declared in ingestion/terraform/connection.tf; this
-# file only makes its streams visible to Dagster as assets. Materializing one
-# triggers a sync of the whole connection (Airbyte's unit of work is the
-# connection, not the stream).
+# Source-agnostic. The connection it selects and the asset-key prefix it stamps
+# both come from .env (AIRBYTE_CONNECTION_NAME / AIRBYTE_SOURCE_NAME), so the same
+# component serves whatever source is installed — `make example-stripe` points it
+# at the Stripe connection; your own source sets those two vars instead.
+#
+# The connection itself is declared in Terraform (ingestion/terraform/, or
+# examples/stripe/terraform/connection.tf for the example); this file only makes
+# its streams visible to Dagster as assets. Materializing one triggers a sync of
+# the whole connection (Airbyte's unit of work is the connection, not the stream).
 #
 # This is OSS Airbyte running in abctl's kind cluster, not Airbyte Cloud, hence
 # the explicit *_base_url pointing at localhost:8000. Credentials come from .env
@@ -20,16 +25,18 @@ attributes:
 
   connection_selector:
     by_name:
-      - "Stripe -> Postgres (raw)"
+      - "{{ env.AIRBYTE_CONNECTION_NAME }}"
 
   # The asset key MUST match the dbt source key, or the graph silently splits in
   # two: Airbyte assets on one side, dbt models with phantom upstreams on the
-  # other. dbt keys a source as [source_name, table_name] — `stripe` is the
-  # source name in transformation/models/staging/stripe/_stripe__sources.yml —
-  # so Airbyte's default single-segment key is remapped to match here.
+  # other. dbt keys a source as [source_name, table_name], so Airbyte's default
+  # single-segment key is remapped to match here. AIRBYTE_SOURCE_NAME is the same
+  # value used as the dbt source `name` in _<source>__sources.yml — keep them
+  # equal. (Empty scaffold: no connection matches the selector, so this component
+  # simply contributes zero assets until a source is installed.)
   translation:
-    key: "stripe/{{ props.stream_name }}"
-    group_name: raw_stripe
+    key: "{{ env.AIRBYTE_SOURCE_NAME }}/{{ props.stream_name }}"
+    group_name: "raw_{{ env.AIRBYTE_SOURCE_NAME }}"
     # Dagster owns the schedule, not Airbyte. The connection in terraform/ is
     # deliberately `manual` so there is exactly one place a sync can be
     # triggered from — here. Everything downstream is eager, so this cron is

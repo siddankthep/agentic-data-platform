@@ -1,0 +1,48 @@
+# TEMPLATE — copy to `connection.tf` and fill in for your own source.
+#
+# Ignored by Terraform (only `.tf` loads). This wires your source (source.tf) to
+# the destination warehouse (destination_postgres.tf) and declares which streams
+# sync and how. `make example-stripe` installs a worked version
+# (examples/stripe/terraform/connection.tf).
+#
+# Two things the rest of the platform depends on:
+#   - the connection NAME must match orchestration/defs/airbyte/defs.yaml's
+#     connection_selector (AIRBYTE_CONNECTION_NAME in .env);
+#   - it must expose a `connection_id` output (see outputs), which `make sync` reads.
+
+# locals {
+#   streams = [
+#     "table_a",
+#     "table_b",
+#     # `make airbyte-streams` lists what the source actually exposes.
+#   ]
+# }
+#
+# resource "airbyte_connection" "source_to_warehouse" {
+#   name           = "My Source -> Postgres (raw)" # == AIRBYTE_CONNECTION_NAME
+#   source_id      = airbyte_source.source.source_id
+#   destination_id = airbyte_destination.postgres.destination_id
+#
+#   status               = var.connection_status
+#   namespace_definition = "destination" # land everything in var.postgres_schema (raw)
+#   prefix               = ""
+#
+#   non_breaking_schema_updates_behavior = "propagate_columns"
+#
+#   schedule = {
+#     schedule_type   = var.sync_schedule_type
+#     cron_expression = var.sync_schedule_type == "cron" ? var.sync_cron_expression : null
+#   }
+#
+#   configurations = {
+#     streams = [
+#       for name in local.streams : {
+#         name      = name
+#         sync_mode = "incremental_deduped_history" # if the stream has a cursor + PK
+#       }
+#     ]
+#   }
+# }
+#
+# output "source_id"     { value = airbyte_source.source.source_id }
+# output "connection_id" { value = airbyte_connection.source_to_warehouse.connection_id }

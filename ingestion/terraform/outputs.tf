@@ -1,14 +1,9 @@
-output "source_id" {
-  description = "Airbyte id of the Stripe source."
-  value       = airbyte_source.stripe.source_id
-}
+# The scaffold's Terraform declares only the destination warehouse. A source and
+# a connection are installed on top of it (see source.tf.example /
+# connection.tf.example, or `make example-stripe`), and they contribute the
+# `source_id` and `connection_id` outputs that `make sync` relies on.
 
 output "destination_id" {
-  description = "Airbyte id of the Postgres destination."
+  description = "Airbyte id of the Postgres destination warehouse."
   value       = airbyte_destination.postgres.destination_id
-}
-
-output "connection_id" {
-  description = "Airbyte id of the Stripe -> Postgres connection. `make sync` reads this to trigger a run."
-  value       = airbyte_connection.stripe_to_postgres.connection_id
 }

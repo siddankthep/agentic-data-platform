@@ -28,52 +28,17 @@ variable "airbyte_workspace_id" {
 }
 
 # ---------------------------------------------------------------------------
-# Stripe source
+# Source
+#
+# The scaffold declares no source of its own — the source is whatever you bring.
+# A source connector (its own *.tf plus variables) is installed on top of this
+# module: `make example-stripe` drops the Stripe source in, or you write your own
+# source.tf against the airbyte_connector_configuration data source (see
+# source.tf.example). Its variables live alongside it, not here.
 # ---------------------------------------------------------------------------
 
-variable "stripe_account_id" {
-  description = "Stripe account id (acct_...) to replicate."
-  type        = string
-}
-
-variable "stripe_client_secret" {
-  description = "Stripe restricted or secret API key. Use a test-mode key."
-  type        = string
-  sensitive   = true
-}
-
-variable "stripe_start_date" {
-  description = "Replicate Stripe data created on or after this UTC timestamp."
-  type        = string
-  default     = "2017-01-25T00:00:00Z"
-}
-
-variable "stripe_lookback_window_days" {
-  description = "Re-read this many days before the last cursor on incremental syncs, to catch late-mutating objects."
-  type        = number
-  default     = 0
-}
-
-variable "stripe_slice_range" {
-  description = "Size in days of each incremental request window."
-  type        = number
-  default     = 365
-}
-
-variable "stripe_num_workers" {
-  description = "Parallel workers the connector uses to fetch slices."
-  type        = number
-  default     = 10
-}
-
-variable "stripe_call_rate_limit" {
-  description = "Requests per second ceiling. Stripe test mode allows 25; live mode allows 100."
-  type        = number
-  default     = 25
-}
-
 # ---------------------------------------------------------------------------
-# Postgres destination
+# Destination warehouse (Postgres by default)
 # ---------------------------------------------------------------------------
 
 variable "postgres_host" {
@@ -100,7 +65,7 @@ variable "postgres_database" {
 }
 
 variable "postgres_schema" {
-  description = "Schema that receives the typed Stripe tables."
+  description = "Schema that receives the typed source tables (the `raw` layer dbt reads)."
   type        = string
   default     = "raw"
 }
