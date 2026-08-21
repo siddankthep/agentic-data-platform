@@ -1,0 +1,42 @@
+# OpenMetadata profiler — Postgres source.
+#
+# Computes column-level profiles (row/null/distinct counts, min/max/mean, value
+# distributions) over the tables the metadata workflow catalogued. These profiles
+# are what the curation agent (Phase 2) reads to infer grain, keys and semantics.
+# Run after database_metadata.yaml. Rendered + run by the same runner.
+#
+# Note: sample-data generation and PII tagging are a *separate* workflow in
+# OpenMetadata 1.12 — see auto_classification.yaml — not a flag here.
+source:
+  type: postgres
+  serviceName: ${OM_SOURCE_SERVICE}
+  serviceConnection:
+    config:
+      type: Postgres
+      username: ${SOURCE_DB_USERNAME}
+      authType:
+        password: ${SOURCE_DB_PASSWORD}
+      hostPort: ${SOURCE_DB_HOSTPORT}
+      database: ${SOURCE_DB_DATABASE}
+  sourceConfig:
+    config:
+      type: Profiler
+      # Percentage of rows sampled for the profile. Lower it for very large
+      # tables; 100 = exact.
+      profileSample: 100
+      schemaFilterPattern:
+        includes:
+          - "${OM_SCHEMA_INCLUDE}"
+processor:
+  type: orm-profiler
+  config: {}
+sink:
+  type: metadata-rest
+  config: {}
+workflowConfig:
+  loggerLevel: INFO
+  openMetadataServerConfig:
+    hostPort: ${OPENMETADATA_HOST_PORT}
+    authProvider: openmetadata
+    securityConfig:
+      jwtToken: "${OPENMETADATA_JWT_TOKEN}"

@@ -4,6 +4,7 @@ export
 .PHONY: init up down logs psql migrate-up migrate-down migrate-create migrate-force reset fix-perms \
         dagster-dev dagster-materialize dagster-dbt dagster-check dagster-refresh \
         example-stripe example-clean \
+        om-wait om-token om-bot om-demo om-ingest-metadata om-ingest-profiler om-ingest-classify om-ingest-dbt om-ingest \
         $(INGESTION_TARGETS)
 
 COMPOSE_FILE   := docker-compose.yml
@@ -86,6 +87,47 @@ example-stripe:
 
 example-clean:
 	scripts/example.sh clean stripe
+
+# ---------------------------------------------------------------------------
+# OpenMetadata (Phase 1: understand any source)
+#
+# The catalog runs in the compose stack (`make up`). These targets bootstrap
+# auth and run the ingestion workflows. Ingestion executes inside the official
+# OpenMetadata ingestion image on the compose network — see
+# ingestion/openmetadata/ and orchestration/defs/openmetadata/. On the same
+# Dagster graph the workflows are the `openmetadata` asset group.
+# ---------------------------------------------------------------------------
+
+om-wait:
+	scripts/openmetadata.sh wait
+
+# Load the tiny demo source so the walkthrough runs without an external system.
+om-demo:
+	$(COMPOSE) exec -T postgresql psql -U $(POSTGRES_USER) -d $(POSTGRES_DB) < ingestion/openmetadata/demo_source.sql
+	@echo "Seeded demo.customers + demo.orders. Run 'make om-ingest' to catalog them."
+
+# Mint an admin PAT and a scoped curation-agent bot, writing both tokens to .env.
+om-token:
+	scripts/openmetadata.sh token write
+
+om-bot:
+	scripts/openmetadata.sh bot write
+
+# Individual ingestion workflows (render template from .env, run in the image).
+om-ingest-metadata:
+	uv run python -m orchestration.defs.openmetadata.ingest metadata
+
+om-ingest-profiler:
+	uv run python -m orchestration.defs.openmetadata.ingest profiler
+
+om-ingest-classify:
+	uv run python -m orchestration.defs.openmetadata.ingest classify
+
+om-ingest-dbt:
+	uv run python -m orchestration.defs.openmetadata.ingest dbt
+
+# Understand a source end to end: catalog it, profile it, classify PII.
+om-ingest: om-ingest-metadata om-ingest-profiler om-ingest-classify
 
 # ---------------------------------------------------------------------------
 # Airbyte ingestion — delegated to ingestion/Makefile

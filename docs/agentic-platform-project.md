@@ -809,6 +809,15 @@ baked in; `examples/stripe/` can be copied back as a reference at any time.
 
 ### Phase 1 — OpenMetadata: understand any source · ~1.5 weeks
 
+**Implemented — see `docs/openmetadata.md`.** Declarative ingestion configs
+(`ingestion/openmetadata/`) run inside the OM ingestion image on the compose
+network via `orchestration/defs/openmetadata/` (also the `openmetadata` Dagster
+asset group); `scripts/openmetadata.sh` mints the automation token and the scoped
+`data-steward-bot`; the MCP server is live. Verified on a seeded demo source:
+metadata + profiler + PII auto-classification at 100%, `email → PII.Sensitive`.
+What remains optional: dbt ingestion needs built marts to be meaningful, and
+wiring the OM assets `deps` onto the dbt marts once a real source's models exist.
+
 Step 1 of the workflow, and the substrate for the curation agent: the catalog
 must connect to a source the user already has and expose its technical metadata
 *before* any load.

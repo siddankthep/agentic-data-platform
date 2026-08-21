@@ -550,7 +550,9 @@ services:
       - CUBEJS_DEV_MODE=true
       - CUBEJS_SCHEMA_PATH=model
       - CUBEJS_DB_TYPE=postgres
-      - CUBEJS_DB_HOST=postgres
+      # The DB service is named `postgresql` (OM's DB_HOST default expects that
+      # name); everything on app_net reaches it there.
+      - CUBEJS_DB_HOST=postgresql
       - CUBEJS_DB_PORT=5432
       - CUBEJS_DB_NAME=${POSTGRES_DB:-ecom}
       - CUBEJS_DB_USER=${POSTGRES_USER:-cube}
@@ -558,7 +560,7 @@ services:
     volumes:
       - ./cube_semantics:/cube/conf
     depends_on:
-      postgres:
+      postgresql:
         condition: service_healthy
 
 networks:

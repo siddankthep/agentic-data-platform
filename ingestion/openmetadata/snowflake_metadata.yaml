@@ -1,0 +1,40 @@
+# OpenMetadata metadata ingestion — Snowflake source (template).
+#
+# The scaffold's second supported source type. Same shape as
+# database_metadata.yaml; only the serviceConnection block differs (Snowflake
+# needs account + warehouse + role). The profiler and auto_classification
+# workflows work against a Snowflake service too — copy their sourceConfig blocks
+# and swap in this serviceConnection.
+#
+# Not run in-network via the compose bridge (Snowflake is remote), so
+# OPENMETADATA_HOST_PORT can stay the in-network server URL when run as a
+# container, or http://localhost:8585/api when run from the host.
+source:
+  type: snowflake
+  serviceName: ${OM_SOURCE_SERVICE}
+  serviceConnection:
+    config:
+      type: Snowflake
+      username: ${SNOWFLAKE_USERNAME}
+      password: ${SNOWFLAKE_PASSWORD}
+      account: ${SNOWFLAKE_ACCOUNT}
+      warehouse: ${SNOWFLAKE_WAREHOUSE}
+      database: ${SNOWFLAKE_DATABASE}
+      role: ${SNOWFLAKE_ROLE}
+  sourceConfig:
+    config:
+      type: DatabaseMetadata
+      includeViews: true
+      schemaFilterPattern:
+        includes:
+          - "${OM_SCHEMA_INCLUDE}"
+sink:
+  type: metadata-rest
+  config: {}
+workflowConfig:
+  loggerLevel: INFO
+  openMetadataServerConfig:
+    hostPort: ${OPENMETADATA_HOST_PORT}
+    authProvider: openmetadata
+    securityConfig:
+      jwtToken: "${OPENMETADATA_JWT_TOKEN}"

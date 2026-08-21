@@ -67,8 +67,8 @@ One pi agent plays three roles, matching the three steps:
 | Ingestion | Airbyte via `abctl` + Terraform | ✅ (Stripe example) |
 | Transform | dbt (`transformation/`) | ✅ (Stripe example) |
 | Semantics | Cube (`cube_semantics/`) + MCP server | ✅ (Stripe example) |
-| Orchestration | Dagster (`orchestration/`) | ✅ Airbyte + dbt in one graph |
-| Catalog | OpenMetadata (Docker Compose) | 🟡 base services only |
+| Orchestration | Dagster (`orchestration/`) | ✅ Airbyte + dbt + OpenMetadata in one graph |
+| Catalog | OpenMetadata (`ingestion/openmetadata/`) | ✅ connect/profile any source, PII tags, scoped bot, MCP |
 | Agents | pi (curation / generation / analyst) | ⛔ planned |
 
 A complete, hand-built **Stripe** pipeline ships as a *worked example* — the
@@ -101,6 +101,8 @@ Terraform targets (`tf-plan`, `tf-apply`, `sync`) as needed — see the
 
 - [docs/agentic-platform-project.md](docs/agentic-platform-project.md) — the
   concepts, the tool-by-tool reasoning, and the phased build plan. **Start here.**
+- [docs/openmetadata.md](docs/openmetadata.md) — connect/profile any source, the
+  scoped bot, and the MCP server (Phase 1).
 - [docs/orchestration.md](docs/orchestration.md) — how Airbyte and dbt become one
   Dagster asset graph.
 - [docs/mcp-cube-guide.md](docs/mcp-cube-guide.md) — building the Cube MCP server.
@@ -113,11 +115,12 @@ Terraform targets (`tf-plan`, `tf-apply`, `sync`) as needed — see the
 The build plan to turn this from a Stripe-shaped repo into a source-agnostic,
 plug-and-play scaffold (full detail in §9 of the project doc):
 
-- **Phase 0** — Genericize: extract the Stripe pipeline into a removable
+- **Phase 0** ✅ — Genericize: extract the Stripe pipeline into a removable
   `examples/`, leave documented template directories, parameterize source and
   destination.
-- **Phase 1** — OpenMetadata: connect and profile any source; wire connectors,
-  the MCP server, and a scoped bot.
+- **Phase 1** ✅ — OpenMetadata: connect and profile any source (metadata,
+  profiler, PII auto-classification), the MCP server, a scoped bot, and the
+  `openmetadata` Dagster asset group. See [docs/openmetadata.md](docs/openmetadata.md).
 - **Phase 2** — Curation agent: source → glossary, tags, and the Markdown brief.
 - **Phase 3** — Ingestion: parameterized Airbyte/Terraform, source → chosen
   warehouse.

@@ -1,0 +1,33 @@
+# OpenMetadata dbt ingestion.
+#
+# Pulls model descriptions, tests and model-level lineage from the dbt artifacts
+# in transformation/target/ (manifest + catalog + run_results) and attaches them
+# to the warehouse tables the models produce. Run *after* the warehouse tables
+# have been catalogued (database_metadata.yaml against the warehouse) and after a
+# `dbt build`, so the target/ artifacts exist and the tables they reference are
+# already entities.
+#
+# Run with `metadata ingest-dbt`. The runner mounts transformation/target at
+# /dbt inside the ingestion container, so the paths below are container paths.
+# serviceName is the OpenMetadata DB service the models' tables live under.
+source:
+  type: dbt
+  serviceName: ${OM_WAREHOUSE_SERVICE}
+  sourceConfig:
+    config:
+      type: DBT
+      dbtConfigSource:
+        dbtConfigType: local
+        dbtManifestFilePath: /dbt/manifest.json
+        dbtCatalogFilePath: /dbt/catalog.json
+        dbtRunResultsFilePath: /dbt/run_results.json
+sink:
+  type: metadata-rest
+  config: {}
+workflowConfig:
+  loggerLevel: INFO
+  openMetadataServerConfig:
+    hostPort: ${OPENMETADATA_HOST_PORT}
+    authProvider: openmetadata
+    securityConfig:
+      jwtToken: "${OPENMETADATA_JWT_TOKEN}"

@@ -1,0 +1,44 @@
+# OpenMetadata auto-classification — Postgres source.
+#
+# Samples rows and auto-applies PII classifications (PII.Sensitive /
+# PII.NonSensitive) to columns by inspecting names and sample values. In
+# OpenMetadata 1.12 this is a distinct workflow (`metadata classify`), separate
+# from the profiler. Run after database_metadata.yaml.
+#
+# The tags it applies are a *starting point* the curation agent (Phase 2) reviews
+# and the analyst agent's policy gate later enforces — verified on the demo source
+# (email -> PII.Sensitive, country -> PII.NonSensitive).
+source:
+  type: postgres
+  serviceName: ${OM_SOURCE_SERVICE}
+  serviceConnection:
+    config:
+      type: Postgres
+      username: ${SOURCE_DB_USERNAME}
+      authType:
+        password: ${SOURCE_DB_PASSWORD}
+      hostPort: ${SOURCE_DB_HOSTPORT}
+      database: ${SOURCE_DB_DATABASE}
+  sourceConfig:
+    config:
+      type: AutoClassification
+      storeSampleData: true
+      enableAutoClassification: true
+      # Minimum confidence (%) before a PII tag is applied.
+      confidence: 80
+      schemaFilterPattern:
+        includes:
+          - "${OM_SCHEMA_INCLUDE}"
+processor:
+  type: orm-profiler
+  config: {}
+sink:
+  type: metadata-rest
+  config: {}
+workflowConfig:
+  loggerLevel: INFO
+  openMetadataServerConfig:
+    hostPort: ${OPENMETADATA_HOST_PORT}
+    authProvider: openmetadata
+    securityConfig:
+      jwtToken: "${OPENMETADATA_JWT_TOKEN}"

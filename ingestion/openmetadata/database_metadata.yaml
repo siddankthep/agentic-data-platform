@@ -1,0 +1,42 @@
+# OpenMetadata metadata ingestion — Postgres source.
+#
+# Catalogs a source's schemas, tables, columns and types into OpenMetadata. This
+# is step 1 of the platform: understand the source *before* any load. Nothing is
+# clicked in the UI — the workflow is declared here and run by
+# `orchestration/defs/openmetadata/ingest.py` (also the Dagster asset), which
+# renders the placeholders from .env and runs it inside the OM ingestion image
+# on the compose network.
+#
+# `${VAR}` values are substituted at run time (see that runner). Hostnames are
+# the in-network names because the workflow runs as a container on app_net:
+# the source is `postgresql:5432`, the OM server is `openmetadata-server:8585`.
+source:
+  type: postgres
+  serviceName: ${OM_SOURCE_SERVICE}
+  serviceConnection:
+    config:
+      type: Postgres
+      username: ${SOURCE_DB_USERNAME}
+      authType:
+        password: ${SOURCE_DB_PASSWORD}
+      hostPort: ${SOURCE_DB_HOSTPORT}
+      database: ${SOURCE_DB_DATABASE}
+  sourceConfig:
+    config:
+      type: DatabaseMetadata
+      includeViews: true
+      # Restrict to the schema(s) that make up this source. Widen for a real
+      # source; the ^...$ anchors avoid matching sibling schemas by prefix.
+      schemaFilterPattern:
+        includes:
+          - "${OM_SCHEMA_INCLUDE}"
+sink:
+  type: metadata-rest
+  config: {}
+workflowConfig:
+  loggerLevel: INFO
+  openMetadataServerConfig:
+    hostPort: ${OPENMETADATA_HOST_PORT}
+    authProvider: openmetadata
+    securityConfig:
+      jwtToken: "${OPENMETADATA_JWT_TOKEN}"
